@@ -747,22 +747,25 @@ const Tmap = {
     return this.parse(j);
   },
 
-  /* §3.3 L1 — 미래 출발 시각 탐색. 귀로 1건에만 쓴다.
-   * 경로예측 API는 일반 경로안내와 요청 형태가 다르다. 파라미터를 routesInfo로 감싸고
-   * departureTime(RFC3339) · searchOption 두 자리 코드를 쓴다. */
+  /* §3.3 L1 — 타임머신 자동차 길 안내 (routes/prediction). 귀로 1건에만 쓴다.
+   * 일반 경로안내와 요청 형태가 다르다. 좌표를 평면 startX/startY 가 아니라
+   * departure/destination 노드(name·lon·lat)로 보내야 하고, 빠지면 9401을 돌려준다.
+   * predictionType 은 '계산해 낼 값'을 가리킨다. 우리는 귀가 출발 시각을 알고
+   * 도착 시각을 모르므로 'arrival' 을 쓴다. 'departure' 를 쓰면 predictionTime 이
+   * 도착 시각으로 해석돼 출발 시각을 거꾸로 계산한다. */
   async predict(o, d, includeHighway, when){
     const pad = n => String(n).padStart(2,'0');
     const t = when.getFullYear()+'-'+pad(when.getMonth()+1)+'-'+pad(when.getDate())
             + 'T'+pad(when.getHours())+':'+pad(when.getMinutes())+':00+0900';
-    const j = await Net.json('https://apis.openapi.sk.com/tmap/routes/prediction?version=1&format=json', {
+    const qs = 'version=1&format=json&trafficInfo=Y'
+             + '&reqCoordType=WGS84GEO&resCoordType=WGS84GEO&totalValue=1';
+    const j = await Net.json('https://apis.openapi.sk.com/tmap/routes/prediction?' + qs, {
       method:'POST',
       headers:{ appKey:CONFIG.TMAP_APP_KEY, 'Content-Type':'application/json' },
       body: JSON.stringify({ routesInfo: {
-        departureTime:t, predictionType:'departure',
-        startX:String(o.lng), startY:String(o.lat),
-        endX:String(d.lng),   endY:String(d.lat),
-        startName: encodeURIComponent('출발'), endName: encodeURIComponent('도착'),
-        reqCoordType:'WGS84GEO', resCoordType:'WGS84GEO',
+        departure  : { name:'출발', lon:o.lng, lat:o.lat },
+        destination: { name:'도착', lon:d.lng, lat:d.lat },
+        predictionType:'arrival', predictionTime:t,
         searchOption: includeHighway ? '00' : '01',
       }}),
     });
