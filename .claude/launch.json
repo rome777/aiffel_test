@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "smooth-drive",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["server.py", "4173"],
+      "port": 4173
+    }
+  ]
+}

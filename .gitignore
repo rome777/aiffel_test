@@ -1,0 +1,10 @@
+# API 키 — 저장소가 public이므로 절대 커밋하지 않는다
+config.local.js
+
+# IDE 설정 — 환경마다 달라져 diff와 충돌만 만든다
+.idea/
+
+# 실험 스크립트 · 스크랩 결과물
+test_fetch*.js
+test_tmap.js
+naver_fuel.html

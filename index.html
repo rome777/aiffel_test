@@ -1,0 +1,1716 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script>
+  let theme = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-theme', theme);
+</script>
+<title>주말 드라이브 코스 & 연비 리포터</title>
+<style>
+:root{
+  --bg:#f8fafc; --panel:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --accent:#2563eb; --ok:#16a34a; --warn:#d97706; --bad:#dc2626; --violet:#7c3aed;
+  --chip:#f1f5f9; --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.06);
+}
+:root[data-theme="dark"]{
+    --bg:#0b1220; --panel:#111a2e; --ink:#e6edf7; --muted:#94a3b8; --line:#1e293b;
+    --accent:#60a5fa; --ok:#4ade80; --warn:#fbbf24; --bad:#f87171; --violet:#a78bfa;
+    --chip:#1a2438; --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  --chip:#1a2438; --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Noto Sans KR",Segoe UI,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1080px;margin:0 auto;padding:16px 16px 48px}
+header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:19px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px}
+
+
+
+.controls{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px;box-shadow:var(--shadow)}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.row + .row{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.grp{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.lab{font-size:12px;color:var(--muted);min-width:62px}
+button.seg{
+  background:var(--chip);border:1px solid var(--line);color:var(--ink);
+  padding:6px 11px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;
+}
+button.seg[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.seg:hover{border-color:var(--accent)}
+input[type=text],input[type=number],select{
+  background:var(--bg);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:6px 9px;font-size:13px;font-family:inherit;min-width:0
+}
+input[type=range]{accent-color:var(--accent);width:150px}
+.go{background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.go:disabled{opacity:.5;cursor:default}
+
+.mapwrap{position:relative;height:380px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow)}
+#map{position:absolute;inset:0}
+/* SVG는 replaced element라 inset:0만으로는 늘어나지 않고 viewBox의 고유 비율(2:1)로
+   높이가 잡혀 컨테이너를 넘친다. width/height를 명시해야 letterbox가 제대로 걸린다. */
+#svgfallback{position:absolute;inset:0;width:100%;height:100%;display:none}
+#svgfallback.show{display:block}
+.legend{position:absolute;left:10px;bottom:10px;z-index:1000;background:color-mix(in srgb,var(--panel) 92%,transparent);border:1px solid var(--line);border-radius:9px;padding:7px 9px;font-size:11px;display:flex;gap:10px;flex-wrap:wrap;backdrop-filter:blur(6px)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle}
+.spin{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:color-mix(in srgb,var(--panel) 70%,transparent);z-index:1000;font-size:13px;color:var(--muted)}
+.spin.show{display:flex}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+@media (max-width:820px){.grid{grid-template-columns:1fr}.mapwrap{height:300px}.stats{grid-template-columns:repeat(3,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px;box-shadow:var(--shadow)}
+.card h2{font-size:13px;margin:0 0 10px;color:var(--muted);font-weight:600;letter-spacing:.02em}
+
+.hero{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+.hero .name{font-size:17px;font-weight:700}
+.hero .tag{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--chip);color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.stat{background:var(--chip);border-radius:9px;padding:8px 9px}
+.stat b{display:block;font-size:17px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.stat span{font-size:11px;color:var(--muted)}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:6px 7px;border-bottom:1px solid var(--line)}
+th{font-size:11px;color:var(--muted);font-weight:600}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr:last-child td{border-bottom:none}
+
+.cand{display:flex;justify-content:space-between;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+.cand:hover{background:var(--chip)}
+.cand[aria-selected="true"]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.cand .l{min-width:0}
+.cand .t{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cand .m{font-size:11px;color:var(--muted)}
+.cand .r{text-align:right;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.badge{font-size:10px;padding:1px 5px;border-radius:99px;background:var(--chip);color:var(--muted);margin-left:5px}
+.badge.est{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.badge.top{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+
+.wp{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.wp:last-child{border-bottom:none}
+.wp .ic{font-size:19px;line-height:1}
+.wp .b{flex:1;min-width:0}
+.wp .n{font-weight:600;font-size:13px}
+.wp .d{font-size:12px;color:var(--muted);margin-top:1px}
+.wp .x{font-size:11px;color:var(--warn)}
+
+footer{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.7}
+footer code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:10px}
+.dbg{display:flex;gap:14px;flex-wrap:wrap}
+.hidden{display:none !important}
+.leaflet-container{font-family:inherit}
+.wp-alts{max-height:0;overflow:hidden;transition:max-height .25s ease}
+.wp-alts.open{max-height:300px}
+.wp-alt{padding:5px 0 5px 29px;font-size:12px;color:var(--muted);border-top:1px dashed var(--line)}
+.wp-alt .n{font-weight:500;color:var(--ink);font-size:12px}
+.wp-toggle-alt{background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:2px 0;font-family:inherit}
+#toast-container { position:fixed; bottom:20px; right:20px; z-index:10000; display:flex; flex-direction:column; gap:12px; align-items:flex-end; pointer-events:none; }
+#toast-container-top { position:fixed; top:20px; right:20px; z-index:10000; display:flex; flex-direction:column; gap:12px; align-items:flex-end; pointer-events:none; }
+.toast { background:var(--panel); border-left:4px solid var(--accent); padding:16px 20px; border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,0.15); pointer-events:auto; animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); display:flex; flex-direction:column; gap:10px; min-width:280px; max-width:340px; border:1px solid var(--line); }
+.toast.bad { border-left-color: var(--bad); }
+.toast.warn { border-left-color: var(--warn); }
+.toast.info { border-left-color: var(--accent); }
+.toast .title { font-weight:700; font-size:14px; color:var(--ink); display:flex; align-items:center; gap:6px; line-height:1.4; }
+.toast .desc { font-size:12px; color:var(--muted); line-height:1.5; }
+.toast .btn { background:var(--accent); color:#fff; border:none; padding:10px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; text-align:center; transition:background 0.2s; font-family:inherit; }
+.toast .btn:hover { background:color-mix(in srgb, var(--accent) 80%, #000); }
+@keyframes slideIn { from { transform:translateX(120%); opacity:0; } to { transform:translateX(0); opacity:1; } }
+@keyframes fadeOut { to { opacity:0; transform:scale(0.95); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:flex; justify-content:space-between; align-items:flex-end">
+    <div>
+      <h1>🚗 주말 드라이브 코스 &amp; 연비 리포터</h1>
+      <span class="sub" id="modeLabel">추천 모드 · 무입력</span>
+    </div>
+    <button id="themeToggle" style="background:none;border:none;cursor:pointer;font-size:20px;padding:4px">☀️</button>
+  </header>
+
+  <div id="keyState" style="position:fixed; bottom:4px; right:6px; font-size:10px; color:var(--muted); opacity:0.4; z-index:9999; pointer-events:none;">확인 중…</div>
+  <div id="toast-container-top"></div>
+  <div id="toast-container"></div>
+
+  <div class="controls">
+    <div class="row">
+      <div class="grp"><span class="lab">선호 거리</span>
+        <button class="seg" data-preset="light">🚶 가볍게</button>
+        <button class="seg" data-preset="normal" aria-pressed="true">🚗 보통</button>
+        <button class="seg" data-preset="long">🛣️ 길게</button>
+        <button class="seg" data-preset="custom">✏️ 직접</button>
+        <input type="range" id="distSlider" min="10" max="120" step="5" value="40" class="hidden">
+        <span id="distVal" class="sub hidden">40 km</span>
+      </div>
+      <div class="grp"><span class="lab">고속도로</span>
+        <button class="seg" data-hw="1" aria-pressed="true">포함</button>
+        <button class="seg" data-hw="0">제외</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="grp"><span class="lab">체류 시간</span>
+        <select id="stay">
+          <option value="30">30분</option>
+          <option value="60" selected>1시간</option>
+          <option value="120">2시간</option>
+          <option value="480">당일 무제한</option>
+        </select>
+      </div>
+      <div class="grp"><span class="lab">경유지</span>
+        <button class="seg" id="wpToggle" data-on="1" aria-pressed="true">🍚 한식 · ☕ 카페 추천</button>
+      </div>
+      <div class="grp"><span class="lab">출발 존</span>
+        <select id="zone">
+          <option value="Z1" selected>Z1 서울 중심부</option>
+          <option value="Z2">Z2 서울 서부</option>
+          <option value="Z3">Z3 수도권 서부</option>
+        </select>
+      </div>
+      <div class="grp"><span class="lab">유종</span>
+        <select id="fuelType">
+          <option value="1861" selected>휘발유 (1,861원)</option>
+          <option value="2320">고급휘발유 (2,320원)</option>
+          <option value="1845">경유 (1,845원)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="grp"><span class="lab">지정 모드</span>
+        <input type="text" id="inOrigin" placeholder="출발지 (비우면 추천)" size="16">
+        <input type="text" id="inDest" placeholder="목적지 (비우면 추천)" size="16">
+      </div>
+      <button class="go" id="run">다시 탐색</button>
+    </div>
+  </div>
+
+  <div class="mapwrap">
+    <div id="mapLegToggle" class="hidden" style="position:absolute; top:10px; right:10px; z-index:1000; background:color-mix(in srgb,var(--panel) 92%,transparent); backdrop-filter:blur(6px); border:1px solid var(--line); border-radius:8px; padding:4px; display:flex; gap:4px">
+      <button class="seg" data-mapleg="out" aria-pressed="true">갈 때</button>
+      <button class="seg" data-mapleg="back">올 때 (예측)</button>
+    </div>
+    <div id="map"></div>
+    <svg id="svgfallback" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="legend">
+      <span><i style="background:#16a34a"></i>원활</span>
+      <span><i style="background:#d97706"></i>서행</span>
+      <span><i style="background:#dc2626"></i>정체</span>
+      <span><i style="background:#94a3b8;opacity:.6"></i>정보 없음 / 예측</span>
+    </div>
+    <div class="spin" id="spin">탐색 중…</div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="hero">
+        <span class="name" id="cName">—</span>
+        <span class="tag" id="cChar">—</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="sDist">—</b><span>편도 km</span></div>
+        <div class="stat"><b id="sTime">—</b><span>왕복 주행</span></div>
+        <div class="stat"><b id="sJam">—</b><span>편도 정체율</span></div>
+        <div class="stat"><b id="sFuel">—</b><span>예상 연비</span></div>
+        <div class="stat"><b id="sCost">—</b><span>예상 기름값</span></div>
+      </div>
+      <p class="sub" id="cWhy" style="margin:10px 0 0"></p>
+    </div>
+
+    <div class="card">
+      <h2>후보 <span id="candN">0</span>개 · 랭킹</h2>
+      <div id="cands"></div>
+    </div>
+
+    <div class="card">
+      <h2>구간별 연비 (왕복 기준)</h2>
+      <table>
+        <thead><tr><th>구간</th><th class="n">거리</th><th class="n">비중</th><th class="n">구간 연비</th></tr></thead>
+        <tbody id="fuelBody"></tbody>
+      </table>
+      <p class="sub" id="fuelNote" style="margin:9px 0 0"></p>
+    </div>
+
+    <div class="card" id="wpCard">
+      <h2>경유지 · 한식 식당 &amp; 카페</h2>
+      <div id="wpList"></div>
+    </div>
+  </div>
+
+  <footer>
+    <div class="dbg">
+      <span>courseSetId <code id="dCsid">—</code></span>
+      <span>API 호출 <code id="dCalls">—</code></span>
+      <span>귀로 통계 <code id="dLayer">—</code></span>
+      <span>첫 렌더 <code id="dMs">—</code></span>
+    </div>
+    <div id="dNote" style="margin-top:5px"></div>
+  </footer>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- 키 파일. .gitignore 에 있어 커밋되지 않는다. 없으면 조용히 무시된다. -->
+<script src="config.local.js" onerror="window.__sdNoKeyFile=true"></script>
+<!-- TMAP jsv2 는 부트스트랩 로더이고 내부에서 document.write 로 실제 모듈을 불러온다.
+     동적으로 삽입한 스크립트에서는 document.write 가 막히므로(“asynchronously-loaded
+     external script” 경고) 파서가 읽는 자리에서 태그를 만들어야 한다. -->
+<script>
+(function(){
+  var K = (window.SD_KEYS || {});
+  if (!K.tmap || K.forceMock) return;
+  document.write('<scr' + 'ipt src="https://apis.openapi.sk.com/tmap/jsv2?version=1&appKey='
+    + encodeURIComponent(K.tmap) + '"></scr' + 'ipt>');
+})();
+</script>
+<script>
+/* ============================================================================
+ * 주말 드라이브 코스 & 연비 리포터
+ * README.md 스펙 구현 — 절 번호는 README의 §와 대응한다.
+ * ========================================================================== */
+
+/* ── 설정 ────────────────────────────────────────────────────────────────
+ * 키를 비워 두면 목(mock) 어댑터로 동작한다. 키를 넣으면 실 API로 전환된다.
+ * TMAP  : https://openapi.sk.com  (앱 등록 → appKey)
+ * Kakao : https://developers.kakao.com (REST API 키 · 플랫폼에 Web 도메인 등록)
+ * 두 API 모두 도메인 화이트리스트를 쓰므로 file:// 로 열면 CORS로 막힌다.
+ * 로컬 확인은 http://localhost 로 서빙할 것.
+ */
+/* 키는 config.local.js 에서 읽는다. 그 파일은 .gitignore 에 있어 커밋되지 않는다.
+ * 저장소가 public이므로 이 파일에 키를 직접 적으면 안 된다. */
+const KEYS = (typeof window !== 'undefined' && window.SD_KEYS) || {};
+const CONFIG = {
+  TMAP_APP_KEY  : KEYS.tmap  || '',
+  KAKAO_REST_KEY: KEYS.kakao || '',
+  FORCE_MOCK    : !!KEYS.forceMock,
+  KEY_FILE_FOUND: typeof window !== 'undefined' && !window.__sdNoKeyFile,
+};
+
+/* ── 차량 제원 (§4.1 실연비 이력 없을 때 공인연비로 대체) ── */
+const CAR = { highway: 15.0, combined: 12.0, name: '공인연비 기본값' };
+
+/* ── §2 출발 앵커 — 위치 거부 시에만 쓰는 유일한 고정 좌표 ── */
+const ANCHORS = {
+  Z1: { name: 'Z1 서울 중심부', ref: '광화문',        lng: 126.9769, lat: 37.5759 },
+  Z2: { name: 'Z2 서울 서부',   ref: '강서구청',      lng: 126.8495, lat: 37.5509 },
+  Z3: { name: 'Z3 수도권 서부', ref: '김포 한강신도시', lng: 126.6980, lat: 37.6440 },
+};
+
+/* ── §2 ② 반경 밴드 ── */
+const DETOUR_FACTOR_DEFAULT = 1.35;
+const PRESETS = {
+  light : { label:'🚶 가볍게', target:15 },
+  normal: { label:'🚗 보통',   target:40 },
+  long  : { label:'🛣️ 길게',   target:60 },
+};
+const BAND_LO = 0.6, BAND_HI = 1.2;
+
+/* ── §2 ③ 목적지 카테고리 → 성격 라벨 ── */
+const CATEGORY_CHAR = [
+  { re:/포구|항|방파제|등대|해변|해수욕/,        char:'해안'       },
+  { re:/호수|저수지|습지|천$|강|제방|수변/,      char:'강변 · 수변' },
+  { re:/전망|스카이|팔각|봉$|산$|고개|재$/,      char:'산복도로'   },
+  { re:/수목원|유원지|성곽|공원|마을|테마/,      char:'시내 혼합'   },
+];
+
+/* ── §3.1 랭킹 가중치 ── */
+const W = { jam:0.5, hw:0.3, dist:0.2 };
+const W_NO_HW = { jam:0.6, hw:0, dist:0.4 };
+const TIE_EPS = 0.02;
+const JAM_FILTER = 0.08;            // §4.2 편도 정체율 < 8%
+const BEARING_PENALTY = 0.95;       // §3.1 방위 쏠림 보정
+const BEARING_MIN_CANDIDATES = 4;
+
+/* ── §7.2 정체 등급 임계 (km/h) ── */
+const GRADE = { smooth:30, slow:15 };
+const GRADE_COLOR = { smooth:'#16a34a', slow:'#d97706', jam:'#dc2626', none:'#94a3b8' };
+
+/* ── §3.3 L2 시간대 계수 테이블 (주말) ──
+ * 열: 고속도로 · 도시고속 · 일반국도 · 시내도로
+ * 이 24개 값은 수도권 주말 통행 가정치다 (§9). */
+const ROAD_KINDS = ['highway','urbanExpress','national','city'];
+const FREE_FLOW  = { highway:100, urbanExpress:80, national:60, city:40 };
+const L2_COEFF = {
+  6 : { highway:0.95, urbanExpress:0.90, national:0.92, city:0.85 },
+  9 : { highway:0.80, urbanExpress:0.72, national:0.85, city:0.70 },
+  12: { highway:0.85, urbanExpress:0.78, national:0.88, city:0.72 },
+  15: { highway:0.72, urbanExpress:0.65, national:0.80, city:0.65 },
+  18: { highway:0.65, urbanExpress:0.58, national:0.78, city:0.62 },
+  21: { highway:0.88, urbanExpress:0.85, national:0.92, city:0.80 },
+};
+const L2_BUCKETS = [6,9,12,15,18,21];
+
+/* ── §5.2 구간별 연비 보정 ── */
+const FUEL_ADJ = { highway:1.00, city:0.85, jam:0.55 };
+
+/* ── §6 경유지 예산 ── */
+const WP = {
+  bufferKm:2, detourPerSlotMin:10, detourTotalMin:25,
+  jamRiseMax:0.02, retries:3, minReviews:15, minRating:4.0, maxSlots:4,
+};
+const VIEW_KEYWORDS = /뷰|테라스|루프탑|창가|노을|전망|오션|리버/;
+
+/* ============================================================================
+ * CORE — 순수 로직. 외부 I/O 없음. 같은 입력이면 항상 같은 출력 (§3).
+ * ========================================================================== */
+const Core = {
+  /* 하버사인 직선거리 (km) */
+  haversine(a, b){
+    const R=6371, t=Math.PI/180;
+    const dLat=(b.lat-a.lat)*t, dLng=(b.lng-a.lng)*t;
+    const s=Math.sin(dLat/2)**2 + Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dLng/2)**2;
+    return 2*R*Math.asin(Math.sqrt(s));
+  },
+  /* 방위각 0~360 (북=0) */
+  bearing(a, b){
+    const t=Math.PI/180;
+    const y=Math.sin((b.lng-a.lng)*t)*Math.cos(b.lat*t);
+    const x=Math.cos(a.lat*t)*Math.sin(b.lat*t)-Math.sin(a.lat*t)*Math.cos(b.lat*t)*Math.cos((b.lng-a.lng)*t);
+    return (Math.atan2(y,x)/t + 360) % 360;
+  },
+  /* 8방위 인덱스 (§2 ④ 방위 분산) */
+  octant(deg){ return Math.floor(((deg + 22.5) % 360) / 45); },
+
+  /* §2 ① 출발 좌표를 100 m 그리드로 스냅 — 재현성의 출발점 */
+  snapToGrid(p){
+    const dLat = 0.1/111.32;
+    const dLng = 0.1/(111.32*Math.cos(p.lat*Math.PI/180));
+    return { lat: Math.round(p.lat/dLat)*dLat, lng: Math.round(p.lng/dLng)*dLng };
+  },
+
+  /* §2 ② 반경 밴드 = (편도 목표 × 0.6~1.2) ÷ 우회계수 */
+  band(targetKm, detourFactor){
+    const f = detourFactor || DETOUR_FACTOR_DEFAULT;
+    return { min:(targetKm*BAND_LO)/f, max:(targetKm*BAND_HI)/f, mid:targetKm/f };
+  },
+
+  /* §2 ⑤ 대략 편도 거리 = 직선거리 × 우회계수 */
+  approxRoadKm(straightKm, detourFactor){
+    return straightKm * (detourFactor || DETOUR_FACTOR_DEFAULT);
+  },
+
+  /* §2 ⑤ 성격 라벨 (추정) */
+  guessChar(poi, origin){
+    const hay = (poi.name||'') + ' ' + (poi.category||'');
+    for (const c of CATEGORY_CHAR) if (c.re.test(hay)) return c.char;
+    const b = Core.bearing(origin, poi);
+    return (b > 225 && b < 315) ? '서향 · 노을' : '시내 혼합';
+  },
+
+  /* §3.3 α = max(0, 1 − 통과까지 남은 시간 ÷ 90분) */
+  alpha(minutesUntilPass){
+    return Math.max(0, 1 - minutesUntilPass/90);
+  },
+
+  /* §3.3 L2 — 도로 등급 × 시간대 계수로 예상 속도를 만든다 */
+  l2Bucket(hour){
+    let b = L2_BUCKETS[0];
+    for (const x of L2_BUCKETS) if (hour >= x) b = x;
+    if (hour < 6) b = 21;              // 심야는 21시대 계수를 재사용
+    return b;
+  },
+  l2Speed(kind, hour){
+    const k = ROAD_KINDS.includes(kind) ? kind : 'city';
+    return FREE_FLOW[k] * L2_COEFF[Core.l2Bucket(hour)][k];
+  },
+  /* 속도 → 정체 등급 (§7.2 임계를 실시간·예측 양쪽에 동일 적용) */
+  speedGrade(kmh){
+    if (kmh >= GRADE.smooth) return 'smooth';
+    if (kmh >= GRADE.slow)   return 'slow';
+    return 'jam';
+  },
+
+  /* §3.3 구간 정체율 블렌딩 — 서행+정체 구간 길이 비율 */
+  blendCongestion(segs, departAt, correction, applyGrade=false){
+    let total=0, bad=0, cum=0;
+    for (const s of segs){
+      const passMin = cum + s.minutes/2;
+      const a = Core.alpha(passMin);
+      const hour = new Date(departAt.getTime() + passMin*60000).getHours();
+      const statSpeed = Core.l2Speed(s.kind, hour) * (correction || 1);
+      const statBad = Core.speedGrade(statSpeed) !== 'smooth' ? 1 : 0;
+      const liveBad = (s.grade && s.grade !== 'smooth') ? 1 : 0;
+      const p = (s.grade ? a*liveBad : 0) + (1-a)*statBad;
+      if (applyGrade) s.grade = Core.speedGrade(statSpeed);
+      total += s.km; bad += s.km * p; cum += s.minutes;
+    }
+    return total ? bad/total : 0;
+  },
+
+  /* §5.2 거리 가중 조화평균 — 산술평균은 연비를 과대평가한다 */
+  fuelEconomy(parts){
+    let dist=0, denom=0;
+    for (const p of parts){ if(!p.km||!p.kmpl) continue; dist+=p.km; denom+=p.km/p.kmpl; }
+    return denom ? dist/denom : 0;
+  },
+  fuelParts(totalKm, mix){
+    return [
+      { key:'highway', label:'고속',      km: totalKm*mix.highway, kmpl: CAR.highway  * FUEL_ADJ.highway },
+      { key:'city',    label:'시내',      km: totalKm*mix.city,    kmpl: CAR.combined * FUEL_ADJ.city    },
+      { key:'jam',     label:'정체 · 서행', km: totalKm*mix.jam,    kmpl: CAR.combined * FUEL_ADJ.jam     },
+    ];
+  },
+
+  /* §3.1 랭킹 점수 */
+  score(c, prefKm, includeHighway){
+    const w = includeHighway ? W : W_NO_HW;
+    const dev = Math.min(1, Math.abs(c.roadKm - prefKm) / prefKm);
+    return w.jam*(1-c.jam) + w.hw*(c.hwRatio||0) + w.dist*(1-dev);
+  },
+
+  /* §3.1 방위 쏠림 보정 — 같은 방위 2번째부터 ×0.95, 후보 4개 미만이면 생략 */
+  applyBearingPenalty(list){
+    if (list.length < BEARING_MIN_CANDIDATES) return list;
+    const seen = {};
+    return list.map(c => {
+      const o = Core.octant(c.bearing);
+      seen[o] = (seen[o]||0) + 1;
+      return seen[o] >= 2 ? { ...c, score: c.score*BEARING_PENALTY, penalized:true } : c;
+    });
+  },
+
+  /* §3.2 동점 처리 — 점수차 0.02 이내면 정체율 → 연비 → POI id */
+  rankSort(list){
+    return [...list].sort((a,b) => {
+      if (Math.abs(a.score-b.score) > TIE_EPS) return b.score - a.score;
+      if (a.jam !== b.jam) return a.jam - b.jam;
+      if ((b.kmpl||0) !== (a.kmpl||0)) return (b.kmpl||0) - (a.kmpl||0);
+      return String(a.id).localeCompare(String(b.id));
+    });
+  },
+
+  /* §2 재현성 — 후보 집합을 해시해 courseSetId를 만든다 */
+  courseSetId(origin, band, cands){
+    const seed = [
+      origin.lat.toFixed(4), origin.lng.toFixed(4),
+      band.min.toFixed(2), band.max.toFixed(2),
+      ...cands.map(c => c.id + ':' + c.lat.toFixed(4) + ',' + c.lng.toFixed(4)),
+    ].join('|');
+    let h1=0x811c9dc5, h2=0x01000193;
+    for (let i=0;i<seed.length;i++){
+      h1 ^= seed.charCodeAt(i); h1 = Math.imul(h1, 16777619) >>> 0;
+      h2 = (Math.imul(h2 ^ seed.charCodeAt(i), 2246822519) + i) >>> 0;
+    }
+    return (h1.toString(16).padStart(8,'0') + h2.toString(16).padStart(8,'0')).slice(0,12);
+  },
+
+  /* §2 ④ 9개 선별 — 방위 분산 · 밴드 · 품질 · 중복 제거 · 결정론적 정렬 */
+  selectNine(pois, origin, band, want){
+    const N = want || 9;
+    const inBand = pois
+      .map(p => {
+        const straight = Core.haversine(origin, p);
+        return { ...p, straightKm:straight, bearing:Core.bearing(origin, p) };
+      })
+      .filter(p => p.straightKm >= band.min && p.straightKm <= band.max)
+      .filter(p => (p.reviews==null || p.reviews >= 30) && (p.rating==null || p.rating >= 3.5));
+
+    /* 결정론적 정렬: 밴드 중심과의 거리 → POI id 사전순 (§2 ④) */
+    inBand.sort((a,b) => {
+      const da = Math.abs(a.straightKm - band.mid), db = Math.abs(b.straightKm - band.mid);
+      if (Math.abs(da-db) > 1e-9) return da - db;
+      return String(a.id).localeCompare(String(b.id));
+    });
+
+    const out = [], perOct = {};
+    for (const p of inBand){
+      if (out.length >= N) break;
+      if (out.some(q => Core.haversine(q, p) < 1.5)) continue;   // 중복 제거
+      const o = Core.octant(p.bearing);
+      if ((perOct[o]||0) >= 2) continue;                          // 방위당 최대 2개
+      perOct[o] = (perOct[o]||0) + 1;
+      out.push(p);
+    }
+    return out;
+  },
+
+  /* §6.1 슬롯 배정 — §3.3의 통과 예정 시각을 그대로 재사용한다 */
+  waypointSlots(departAt, onewayMin, stayMin){
+    const at = m => new Date(departAt.getTime() + m*60000);
+    const h  = d => d.getHours() + d.getMinutes()/60;
+    const slots = [];
+    const midOut = at(onewayMin*0.6), arrive = at(onewayMin);
+    const backStart = at(onewayMin + stayMin), backEnd = at(onewayMin*2 + stayMin);
+    const isMeal = (d) => { const hh = h(d); return (hh >= 11 && hh < 14) || (hh >= 17 && hh < 21); };
+    const isCafe = (d) => { const hh = h(d); return (hh >= 10 && hh < 22); };
+
+    if (isMeal(midOut)) slots.push({ key:'outMeal', icon:'🍚', label:'가는 길 식사', kind:'food',  at:midOut,    predicted:false, atDest:false });
+    if (isCafe(at(onewayMin*0.8))) slots.push({ key:'outCafe', icon:'☕', label:'가는 길 카페', kind:'cafe', at:at(onewayMin*0.8), predicted:false, atDest:false });
+    if (isCafe(backStart)) slots.push({ key:'backCafe', icon:'☕', label:'오는 길 카페', kind:'cafe', at:backStart, predicted:true, atDest:true });
+    if (isMeal(backEnd))   slots.push({ key:'backMeal', icon:'🍚', label:'오는 길 식사', kind:'food', at:backEnd,   predicted:true, atDest:true });
+
+
+    return slots.slice(0, WP.maxSlots);
+  },
+
+  /* §6.2 POI 점수 */
+  poiScore(p, detourMin){
+    const rating  = Math.min(1, (p.rating||0)/5);
+    const detour  = Math.max(0, 1 - detourMin/WP.detourPerSlotMin);
+    const reviews = Math.min(1, Math.log10(1+(p.reviews||0))/Math.log10(1+500));
+    const parking = p.parking ? 1 : 0;
+    const viewBonus = (p.kind==='cafe' && VIEW_KEYWORDS.test(p.reviewText||'')) ? 0.08 : 0;
+    const unknownHours = p.hoursKnown === false ? 0.1 : 0;
+    return 0.4*rating + 0.3*detour + 0.2*reviews + 0.1*parking + viewBonus - unknownHours;
+  },
+};
+</script>
+
+<script>
+/* ============================================================================
+ * PROVIDERS — 외부 I/O. 응답을 Core가 아는 형태로 정규화한다.
+ * 키가 없거나 호출이 실패하면 Mock으로 폴백한다 (§7.3).
+ * ========================================================================== */
+const Net = {
+  calls: 0, notes: [],
+  reset(){ this.calls = 0; this.notes = []; },
+  note(s){ if (!this.notes.includes(s)) this.notes.push(s); },
+  getDailyCalls(){
+    const today = new Date().toISOString().slice(0, 10);
+    const stored = JSON.parse(localStorage.getItem('apiUsage') || '{"date":"","count":0}');
+    return stored.date === today ? stored.count : 0;
+  },
+  incDailyCalls(){
+    const today = new Date().toISOString().slice(0, 10);
+    const stored = JSON.parse(localStorage.getItem('apiUsage') || '{"date":"","count":0}');
+    if (stored.date !== today) { stored.date = today; stored.count = 0; }
+    stored.count++;
+    localStorage.setItem('apiUsage', JSON.stringify(stored));
+  },
+  async json(url, opts){
+    this.calls++;
+    this.incDailyCalls();
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + url.split('?')[0]);
+    return r.json();
+  },
+};
+
+const hasTmap  = () => !CONFIG.FORCE_MOCK && !!CONFIG.TMAP_APP_KEY;
+const hasKakao = () => !CONFIG.FORCE_MOCK && !!CONFIG.KAKAO_REST_KEY;
+
+/* ── Kakao Local — 목적지 후보 · 경유지 POI (§6.4) ───────────────────── */
+const Kakao = {
+  hdr(){ return { Authorization: 'KakaoAK ' + CONFIG.KAKAO_REST_KEY }; },
+
+  /* 밴드를 감싸는 사각형으로 검색한다.
+   * Kakao의 radius 파라미터는 20 km가 상한이라 밴드 최대 53 km를 못 덮는다.
+   * rect로 넓게 받아 밴드 필터는 로컬에서 건다 (§2 ④). */
+  rectOf(origin, maxKm){
+    const dLat = maxKm/111.32;
+    const dLng = maxKm/(111.32*Math.cos(origin.lat*Math.PI/180));
+    return [origin.lng-dLng, origin.lat-dLat, origin.lng+dLng, origin.lat+dLat]
+      .map(v => v.toFixed(6)).join(',');
+  },
+
+  async destinations(origin, band){
+    const rect = this.rectOf(origin, band.max);
+    const url = 'https://dapi.kakao.com/v2/local/search/category.json'
+      + '?category_group_code=AT4&size=15&page=1&rect=' + rect;
+    const j = await Net.json(url, { headers: this.hdr() });
+    return (j.documents || []).map(d => ({
+      id: 'k' + d.id,
+      name: d.place_name,
+      category: d.category_name || '',
+      lng: parseFloat(d.x), lat: parseFloat(d.y),
+      url: d.place_url,
+      rating: null, reviews: null,       // Local API는 평점·리뷰수를 주지 않는다
+    }));
+  },
+
+  async waypoints(center, kind){
+    const q = kind === 'food' ? '한식' : '카페';
+    const code = kind === 'food' ? 'FD6' : 'CE7';
+    const url = 'https://dapi.kakao.com/v2/local/search/keyword.json'
+      + '?query=' + encodeURIComponent(q) + '&category_group_code=' + code
+      + '&x=' + center.lng + '&y=' + center.lat
+      + '&radius=' + Math.round(WP.bufferKm*1000) + '&size=15&sort=distance';
+    const j = await Net.json(url, { headers: this.hdr() });
+    return (j.documents || []).map(d => ({
+      id: 'k' + d.id, name: d.place_name, kind,
+      category: d.category_name || '',
+      lng: parseFloat(d.x), lat: parseFloat(d.y), url: d.place_url,
+      address: d.road_address_name || d.address_name || '',
+      rating: null, reviews: null, hoursKnown: false, parking: false, reviewText: '',
+    }));
+  },
+};
+
+/* ── TMAP — 경로 탐색 · 실시간 교통 · 미래 시각 예측 (§3.3 L1, §7.2) ─── */
+const Tmap = {
+  /* TMAP congestion: 0 정보없음 · 1 원활 · 2 서행 · 3 지체 · 4 정체 */
+  gradeOf(v){
+    const n = parseInt(String(v).split(',')[0], 10);
+    if (!Number.isFinite(n) || n === 0) return null;
+    if (n === 1) return 'smooth';
+    if (n === 2 || n === 3) return 'slow';
+    return 'jam';
+  },
+  /* 도로 등급. roadType이 해석되면 그것을, 아니면 평균 속도로 근사한다.
+   * 근사는 정체 때문에 등급을 낮게 볼 수 있어 L2 계수에만 쓰고 표시는 하지 않는다. */
+  /* 실측 응답의 roadType은 1·2·3·5·6·7·9가 관측된다.
+   * 1 고속도로 / 2 도시고속화도로 / 3 국도 / 4 지방도 / 5 이상 일반·주요도로. */
+  kindOf(props, kmh){
+    const rt = parseInt(props.roadType, 10);
+    if (rt === 1)              return 'highway';
+    if (rt === 2)              return 'urbanExpress';
+    if (rt === 3 || rt === 4)  return 'national';
+    if (rt >= 5)               return 'city';
+    if (kmh >= 80) return 'highway';
+    if (kmh >= 60) return 'urbanExpress';
+    if (kmh >= 40) return 'national';
+    return 'city';
+  },
+
+  parse(j){
+    const feats = j.features || [];
+    let totalKm = 0, totalMin = 0;
+    const head = feats.find(f => f.properties && f.properties.totalDistance != null);
+    if (head){
+      totalKm  = (head.properties.totalDistance||0)/1000;
+      totalMin = (head.properties.totalTime||0)/60;
+    }
+    const segs = [];
+    for (const f of feats){
+      if (!f.geometry || f.geometry.type !== 'LineString') continue;
+      const p = f.properties || {};
+      const km  = (p.distance||0)/1000;
+      const min = (p.time||0)/60;
+      if (km <= 0) continue;
+      const kmh = min > 0 ? km/(min/60) : 0;
+      /* 실시간 교통은 properties.congestion 이 아니라 geometry.traffic 에 온다.
+       * 형태는 [시작인덱스, 끝인덱스, 혼잡도, 속도(km/h)] 이다. */
+      if (f.geometry.traffic && f.geometry.traffic.length > 0) {
+        const pts = f.geometry.coordinates.map(c => ({ lng:c[0], lat:c[1] }));
+        /* 정점 개수가 아니라 실제 거리로 비중을 낸다. 정점 간격이 고르지 않아
+         * 개수로 나누면 정체 구간 길이가 왜곡되고, 그 값이 V2 판정에 그대로 들어간다. */
+        const segLen = i => Core.haversine(pts[i], pts[i+1]);
+        const cum = [0];
+        for (let i=0;i<pts.length-1;i++) cum.push(cum[i] + segLen(i));
+        const whole = cum[cum.length-1] || 1;
+        for (const t of f.geometry.traffic) {
+          const st = Math.max(0, t[0]), ed = Math.min(pts.length-1, t[1]);
+          const sliceCoords = pts.slice(st, ed + 1);
+          if (sliceCoords.length < 2) continue;
+          const ratio = Math.max(0, (cum[ed] - cum[st]) / whole);
+          /* 속도가 실려 오면 §7.2 임계로 직접 판정한다. L2 예측 구간과 같은 축이 된다. */
+          const spd = Number(t[3]);
+          segs.push({
+            km: km * ratio, minutes: min * ratio,
+            grade: Number.isFinite(spd) && spd > 0 ? Core.speedGrade(spd) : this.gradeOf(t[2]),
+            kind : this.kindOf(p, kmh),
+            coords: sliceCoords,
+          });
+        }
+      } else {
+        segs.push({
+          km, minutes:min,
+          grade: this.gradeOf(p.congestion),
+          kind : this.kindOf(p, kmh),
+          coords: f.geometry.coordinates.map(c => ({ lng:c[0], lat:c[1] })),
+        });
+      }
+    }
+    if (!totalKm)  totalKm  = segs.reduce((s,x)=>s+x.km,0);
+    if (!totalMin) totalMin = segs.reduce((s,x)=>s+x.minutes,0);
+    /* 실시간 등급이 한 구간도 없으면 T0 레이어가 비어 있는 것이라 숨기지 않고 드러낸다 (§7.3). */
+    const live = segs.some(x => x.grade);
+    if (!live && segs.length) Net.note('이 경로에는 실시간 교통 구간이 없습니다 — L2 통계만으로 산출');
+    return { totalKm, totalMin, segs, live };
+  },
+
+  body(o, d, includeHighway){
+    return {
+      startX:String(o.lng), startY:String(o.lat),
+      endX:String(d.lng),   endY:String(d.lat),
+      reqCoordType:'WGS84GEO', resCoordType:'WGS84GEO',
+      /* TMAP에 '고속도로 제외' 옵션은 없다. 1(무료 도로 우선)이 유료 고속도로를
+       * 피하는 가장 가까운 선택지다. 4는 '고속도로 우선'이라 정반대다. */
+      searchOption: includeHighway ? '0' : '1',
+      trafficInfo:'Y',
+    };
+  },
+
+  async route(o, d, includeHighway){
+    const j = await Net.json('https://apis.openapi.sk.com/tmap/routes?version=1&format=json', {
+      method:'POST',
+      headers:{ appKey:CONFIG.TMAP_APP_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify(this.body(o, d, includeHighway)),
+    });
+    return this.parse(j);
+  },
+
+  /* §3.3 L1 — 미래 출발 시각 탐색. 귀로 1건에만 쓴다.
+   * 경로예측 API는 일반 경로안내와 요청 형태가 다르다. 파라미터를 routesInfo로 감싸고
+   * departureTime(RFC3339) · searchOption 두 자리 코드를 쓴다. */
+  async predict(o, d, includeHighway, when){
+    const pad = n => String(n).padStart(2,'0');
+    const t = when.getFullYear()+'-'+pad(when.getMonth()+1)+'-'+pad(when.getDate())
+            + 'T'+pad(when.getHours())+':'+pad(when.getMinutes())+':00+0900';
+    const j = await Net.json('https://apis.openapi.sk.com/tmap/routes/prediction?version=1&format=json', {
+      method:'POST',
+      headers:{ appKey:CONFIG.TMAP_APP_KEY, 'Content-Type':'application/json' },
+      body: JSON.stringify({ routesInfo: {
+        departureTime:t, predictionType:'departure',
+        startX:String(o.lng), startY:String(o.lat),
+        endX:String(d.lng),   endY:String(d.lat),
+        startName: encodeURIComponent('출발'), endName: encodeURIComponent('도착'),
+        reqCoordType:'WGS84GEO', resCoordType:'WGS84GEO',
+        searchOption: includeHighway ? '00' : '01',
+      }}),
+    });
+    return this.parse(j);
+  },
+};
+
+/* ── Mock — 키가 없거나 호출이 실패했을 때 (§7.3 기능 축소 동작) ────── */
+const Mock = {
+  seedFrom(s){ let h=2166136261; for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)>>>0;} return h; },
+  rng(seed){ let x=seed||1; return ()=> (x = (Math.imul(x,1664525)+1013904223)>>>0) / 4294967296; },
+
+  NAMES: ['정서진 노을공원','아라마루 전망대','오이도 빨간등대','소래포구 어시장','영종 하늘전망대',
+          '강화 동막해변','석모도 미네랄온천','궁평항 방파제','제부도 바닷길','대부도 유리섬',
+          '행주산성','장항습지 전망대','일산 호수공원','두물머리','세미원','수리산 전망대',
+          '월곶포구','시흥 갯골생태공원','인천대공원','청라호수공원'],
+  CATS : ['관광명소 > 자연명소 > 해안','관광명소 > 전망대','관광명소 > 공원','관광명소 > 유원지',
+          '관광명소 > 자연명소 > 하천','관광명소 > 문화유적'],
+
+  destinations(origin, band){
+    const rnd = this.rng(this.seedFrom(origin.lat.toFixed(3)+origin.lng.toFixed(3)+band.mid.toFixed(1)));
+    const out = [];
+    for (let i=0;i<26;i++){
+      const brg = rnd()*360;
+      const dist = band.min*0.7 + rnd()*(band.max*1.25 - band.min*0.7);
+      const t = Math.PI/180, R = 6371;
+      const lat2 = Math.asin(Math.sin(origin.lat*t)*Math.cos(dist/R) + Math.cos(origin.lat*t)*Math.sin(dist/R)*Math.cos(brg*t))/t;
+      const lng2 = origin.lng + Math.atan2(
+        Math.sin(brg*t)*Math.sin(dist/R)*Math.cos(origin.lat*t),
+        Math.cos(dist/R)-Math.sin(origin.lat*t)*Math.sin(lat2*t))/t;
+      out.push({
+        id:'m'+String(i).padStart(3,'0'),
+        name:this.NAMES[i % this.NAMES.length] + (i >= this.NAMES.length ? ' 2' : ''),
+        category:this.CATS[Math.floor(rnd()*this.CATS.length)],
+        lat:lat2, lng:lng2, rating:null, reviews:null, mock:true,
+      });
+    }
+    return out;
+  },
+
+  route(o, d, includeHighway){
+    const straight = Core.haversine(o, d);
+    const rnd = this.rng(this.seedFrom(o.lat.toFixed(3)+d.lat.toFixed(3)+d.lng.toFixed(3)));
+    const totalKm = straight * (1.25 + rnd()*0.2);
+    const n = Math.max(6, Math.min(22, Math.round(totalKm/3)));
+    const segs = [];
+    for (let i=0;i<n;i++){
+      const f = i/(n-1);
+      const kind = !includeHighway ? (f<0.25||f>0.85 ? 'city' : 'national')
+                 : (f < 0.18 ? 'city' : f > 0.88 ? 'city' : (f<0.34 ? 'urbanExpress' : 'highway'));
+      const r = rnd();
+      const grade = r > 0.93 ? 'jam' : r > 0.82 ? 'slow' : 'smooth';
+      const km = totalKm/n;
+      const base = FREE_FLOW[kind] * (grade==='jam'?0.25:grade==='slow'?0.5:0.92);
+      const coords = [];
+      for (let k=0;k<=4;k++){
+        const g=(i+k/4)/n, wob=Math.sin(g*7+rnd()*0.3)*0.012;
+        coords.push({ lng:o.lng+(d.lng-o.lng)*g+wob, lat:o.lat+(d.lat-o.lat)*g+wob*0.6 });
+      }
+      segs.push({ km, minutes:(km/base)*60, grade, kind, coords });
+    }
+    return { totalKm, totalMin: segs.reduce((s,x)=>s+x.minutes,0), segs, mock:true };
+  },
+
+  waypoints(center, kind){
+    const rnd = this.rng(this.seedFrom(center.lat.toFixed(3)+center.lng.toFixed(3)+kind));
+    const food = ['소문난 손칼국수','바다장어 한상','옛골 보리밥','항아리 수제비','정통 갈비탕','토담 백반'];
+    const cafe = ['노을 로스터리','창가있는집','루프탑 154','테라스 브루잉','바다뷰 커피','언덕 위 카페'];
+    const names = kind==='food' ? food : cafe;
+    return names.map((nm,i) => {
+      const t=Math.PI/180, dist=0.3+rnd()*(WP.bufferKm*0.9), brg=rnd()*360, R=6371;
+      const lat2=Math.asin(Math.sin(center.lat*t)*Math.cos(dist/R)+Math.cos(center.lat*t)*Math.sin(dist/R)*Math.cos(brg*t))/t;
+      const lng2=center.lng+Math.atan2(Math.sin(brg*t)*Math.sin(dist/R)*Math.cos(center.lat*t),
+                 Math.cos(dist/R)-Math.sin(center.lat*t)*Math.sin(lat2*t))/t;
+      return {
+        id:'mw'+kind+i, name:nm, kind, lat:lat2, lng:lng2,
+        category: kind==='food' ? '음식점 > 한식' : '음식점 > 카페',
+        rating: 3.8+rnd()*1.2, reviews: Math.round(20+rnd()*400),
+        hoursKnown: rnd()>0.25, parking: rnd()>0.4,
+        reviewText: kind==='cafe' && rnd()>0.45 ? '통창으로 노을 뷰가 좋고 테라스가 넓다' : '반찬이 정갈하다',
+        address:'', mock:true,
+      };
+    });
+  },
+};
+
+/* ── 어댑터: 실 API → 실패 시 Mock ───────────────────────────────────── */
+const Provider = {
+  usedMock:false,
+  async destinations(origin, band){
+    if (hasKakao()){
+      try {
+        const r = await Kakao.destinations(origin, band);
+        if (r.length) return r;
+        Net.note('Kakao 응답이 비어 밴드를 넓혀도 후보가 없었습니다 — 목 데이터로 대체');
+      } catch(e){ Net.note('Kakao Local 실패 (' + e.message + ') — 목 데이터로 대체'); }
+    } else Net.note('Kakao 키 없음 — 목 데이터');
+    this.usedMock = true;
+    return Mock.destinations(origin, band);
+  },
+  async route(o, d, hw){
+    if (hasTmap()){
+      try { return await Tmap.route(o, d, hw); }
+      catch(e){ Net.note('TMAP 경로 탐색 실패 (' + e.message + ') — 목 경로로 대체'); }
+    } else Net.note('TMAP 키 없음 — 목 경로');
+    this.usedMock = true;
+    return Mock.route(o, d, hw);
+  },
+  /* §3.3 L1 → L2 폴백. 반환 layer가 화면 디버그에 표시된다. */
+  async returnLeg(o, d, hw, when){
+    if (hasTmap()){
+      try { return { layer:'L1', route: await Tmap.predict(o, d, hw, when) }; }
+      catch(e){ Net.note('L1 미래 시각 탐색 미지원/실패 (' + e.message + ') — L2 계수 테이블 사용'); }
+    }
+    return { layer:'L2', route:null };
+  },
+  async waypoints(center, kind){
+    if (hasKakao()){
+      try {
+        const r = await Kakao.waypoints(center, kind);
+        if (r.length) return r;
+      } catch(e){ Net.note('Kakao 경유지 검색 실패 (' + e.message + ')'); }
+    }
+    this.usedMock = true;
+    return Mock.waypoints(center, kind);
+  },
+};
+</script>
+
+<script>
+/* ============================================================================
+ * APP — 오케스트레이션 · 렌더링
+ * ========================================================================== */
+const $  = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const km1 = v => (Math.round(v*10)/10).toFixed(1);
+const pct = v => (v*100).toFixed(1) + '%';
+const hhmm = m => { const h=Math.floor(m/60), r=Math.round(m%60); return h ? h+'시간 '+r+'분' : r+'분'; };
+
+const State = {
+  preset:'normal', customKm:40, includeHighway:true, stayMin:60, zone:'Z1',
+  wpOn:true, fuelPrice:1861, origin:null, originIsLive:false,
+  band:null, cands:[], ranked:[], picked:null, courseSetId:'—',
+  layer:'—', t0:0, firstRenderMs:0, mapLeg:'out',
+};
+
+/* ── localStorage: 존별 우회계수 · 직전 스냅샷 (§7.1) ── */
+const Store = {
+  get(k, d){ try { const v = localStorage.getItem('sd.'+k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem('sd.'+k, JSON.stringify(v)); } catch(e){} },
+  detour(zone){ return this.get('detour.'+zone, DETOUR_FACTOR_DEFAULT); },
+  learnDetour(zone, roadKm, straightKm){
+    if (!straightKm) return;
+    const prev = this.detour(zone), obs = roadKm/straightKm;
+    if (obs < 1 || obs > 2.5) return;
+    this.set('detour.'+zone, +(prev*0.8 + obs*0.2).toFixed(3));
+  },
+};
+
+const Banner = {
+  clear(){ const c = $('#toast-container-top'); if(c) c.innerHTML = ''; },
+  add(msg, kind){
+    const c = $('#toast-container-top');
+    const t = document.createElement('div');
+    const k = kind || 'info';
+    t.className = 'toast ' + k;
+    let icon = '💡';
+    if (k === 'bad') icon = '🚨';
+    if (k === 'warn') icon = '⚠️';
+    t.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div class="title" style="margin-bottom:0;">${icon} 시스템 알림</div>
+        <button onclick="this.closest('.toast').style.animation='fadeOut 0.2s forwards'; setTimeout(()=>this.closest('.toast').remove(),200)" style="background:none; border:none; cursor:pointer; font-size:16px; color:var(--muted); line-height:1; padding:0 0 0 10px;">&times;</button>
+      </div>
+      <div class="desc" style="margin-top:6px;">${msg}</div>
+    `;
+    c.appendChild(t);
+    setTimeout(() => {
+      if(t.parentElement) {
+        t.style.animation='fadeOut 0.2s forwards';
+        setTimeout(()=>t.remove(),200);
+      }
+    }, 6000);
+  },
+};
+const banner = (msg, kind) => { if (!msg) Banner.clear(); else Banner.add(msg, kind); };
+
+const Toast = {
+  clear(){ const c = $('#toast-container'); if(c) c.innerHTML = ''; },
+  show(title, desc, btnText, onClickStr){
+    const c = $('#toast-container');
+    const t = document.createElement('div');
+    t.className = 'toast';
+    t.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div class="title">💡 ${title}</div>
+        <button onclick="this.closest('.toast').style.animation='fadeOut 0.2s forwards'; setTimeout(()=>this.closest('.toast').remove(),200)" style="background:none; border:none; cursor:pointer; font-size:16px; color:var(--muted); line-height:1; padding:0 0 0 10px;">&times;</button>
+      </div>
+      <div class="desc">${desc}</div>
+      <button class="btn" onclick="this.parentElement.style.animation='fadeOut 0.2s forwards'; setTimeout(()=>this.parentElement.remove(),200); ${onClickStr}">${btnText}</button>
+    `;
+    c.appendChild(t);
+  }
+};
+
+/* ── §2 ① 출발지 확정 ─────────────────────────────────────────────── */
+async function resolveOrigin(){
+  const typed = $('#inOrigin').value.trim();
+  if (typed){
+    const p = await geocode(typed);
+    if (p) { State.originIsLive = false; return { ...Core.snapToGrid(p), label: typed }; }
+  }
+  const pos = await new Promise(res => {
+    if (!navigator.geolocation) return res(null);
+    navigator.geolocation.getCurrentPosition(
+      p => res({ lat:p.coords.latitude, lng:p.coords.longitude }),
+      () => res(null), { timeout:2500, maximumAge:600000 });
+  });
+  if (pos){
+    State.originIsLive = true;
+    return { ...Core.snapToGrid(pos), label:'현재 위치' };
+  }
+  State.originIsLive = false;
+  const a = ANCHORS[State.zone];
+  return { lat:a.lat, lng:a.lng, label: a.name + ' · ' + a.ref + ' 앵커' };
+}
+
+async function geocode(q){
+  if (hasKakao()){
+    try {
+      const j = await Net.json('https://dapi.kakao.com/v2/local/search/keyword.json?size=1&query='+encodeURIComponent(q),
+        { headers: Kakao.hdr() });
+      const d = (j.documents||[])[0];
+      if (d) return { lat:parseFloat(d.y), lng:parseFloat(d.x) };
+    } catch(e){ Net.note('주소 검색 실패 (' + e.message + ')'); }
+  }
+  Net.note('주소 검색 불가 — 입력한 지명을 좌표로 바꾸지 못했습니다');
+  return null;
+}
+
+/* ── 메인 파이프라인 (§2 생성 → §3 랭킹 → §7 렌더) ──────────────────── */
+async function run(){
+  State.t0 = performance.now();
+  Net.reset(); Provider.usedMock = false; State.noLiveTraffic = false; State.backJamText = null;
+  $('#spin').classList.add('show');
+  Banner.clear();
+  Toast.clear();
+
+  const prefKm = State.preset === 'custom' ? State.customKm : PRESETS[State.preset].target;
+  const origin = await resolveOrigin();
+  State.origin = origin;
+  const detour = Store.detour(State.zone);
+  State.detourUsed = detour;          // 표시용 — 탐색 뒤 학습으로 값이 바뀌므로 따로 잡아 둔다
+  const band = Core.band(prefKm, detour);
+  State.band = band;
+
+  const destTyped = $('#inDest').value.trim();
+  let cands;
+
+  if (destTyped){
+    /* 🅱 지정 모드 — 입력값 우선 (§2) */
+    const p = await geocode(destTyped);
+    cands = p ? [{ id:'user', name:destTyped, category:'', lat:p.lat, lng:p.lng }] : [];
+    $('#modeLabel').textContent = '지정 모드 · 목적지 입력';
+  } else {
+    /* 🅰 추천 모드 — 실시간 후보 생성 (§2 ③④) */
+    let pois = await Provider.destinations(origin, band);
+    let picked = Core.selectNine(pois, origin, band);
+    /* 9개를 못 채우면 밴드를 1.15배씩 최대 2회 넓힌다 (§2 ④) */
+    let widened = 0;
+    while (picked.length < 9 && widened < 2){
+      widened++;
+      const f = Math.pow(1.15, widened);        // 누적으로 넓힌다
+      State.band = { min:band.min/f, max:band.max*f, mid:band.mid };
+      picked = Core.selectNine(pois, origin, State.band);
+    }
+    if (widened) Net.note('후보가 모자라 밴드를 ' + widened + '회 넓혔습니다');
+    cands = picked;
+    $('#modeLabel').textContent = '추천 모드 · 무입력';
+  }
+
+  if (!cands.length){
+    $('#spin').classList.remove('show');
+    banner('후보를 만들지 못했습니다. 직전 스냅샷도 없어 <b>지정 모드</b>로 목적지를 직접 입력해 주세요. (§9)', 'bad');
+    return;
+  }
+
+  /* §2 ⑤ 성격 · 대략 편도 거리 — 외부 호출 없이 로컬 산출 */
+  cands = cands.map(c => ({
+    ...c,
+    bearing: c.bearing != null ? c.bearing : Core.bearing(origin, c),
+    straightKm: c.straightKm != null ? c.straightKm : Core.haversine(origin, c),
+    char: Core.guessChar(c, origin),
+    estimated: true,
+  })).map(c => ({ ...c, roadKm: Core.approxRoadKm(c.straightKm, detour) }));
+
+  State.courseSetId = Core.courseSetId(origin, State.band, cands);
+  Store.set('snapshot', { at:Date.now(), id:State.courseSetId, origin, band:State.band, cands });
+  State.cands = cands;
+
+  /* §2 ⑥ 상위 3개만 경로 탐색 — 대략 거리 기준 사전 순위 */
+  const pre = Core.rankSort(cands.map(c => ({
+    ...c, jam:0.05, hwRatio: State.includeHighway?0.5:0,
+    score: Core.score({ ...c, jam:0.05, hwRatio:State.includeHighway?0.5:0 }, prefKm, State.includeHighway),
+  })));
+  const top3 = pre.slice(0, 3);
+  const departAt = new Date();
+
+  const routed = await Promise.all(top3.map(async c => {
+    const r = await Provider.route(origin, c, State.includeHighway);
+    return finalize(c, r, departAt, prefKm);
+  }));
+
+  /* 탐색하지 않은 후보는 추정값을 유지한 채 목록에만 남는다 (§2 ⑥) */
+  const rest = pre.slice(3).map(c => ({ ...c, routed:false }));
+
+  /* §3.1 방위 쏠림 보정은 후보 집합 전체(9개)에 적용한다 */
+  const all = Core.applyBearingPenalty(Core.rankSort([...routed, ...rest]));
+
+  /* 1위는 경로를 탐색한 후보 중에서만 고른다. 미탐색 후보의 점수는 정체율을
+   * 가정값으로 넣은 추정치라 탐색된 후보와 같은 축에서 비교할 수 없다 (§2 ⑥). */
+  const routedRanked = Core.rankSort(all.filter(c => c.routed));
+  const restRanked   = Core.rankSort(all.filter(c => !c.routed));
+  const passed = routedRanked.filter(c => c.jam < JAM_FILTER);
+  const failed = routedRanked.filter(c => c.jam >= JAM_FILTER);
+  if (!passed.length && routedRanked.length){
+    Banner.add('탐색한 ' + routedRanked.length + '개 후보 중 정체율 8% 미만이 없습니다. '
+      + '필터를 해제하고 <b>정체율이 가장 낮은 경로</b>를 골랐습니다. (§3.1 · V2 미달)', 'warn');
+  }
+  State.ranked = [...passed, ...failed, ...restRanked];
+  State.picked = (passed.length ? passed : routedRanked)[0] || restRanked[0];
+
+  if (State.picked && State.picked.routed){
+    Store.learnDetour(State.zone, State.picked.roadKm, State.picked.straightKm);
+  }
+
+  renderAll();
+  State.firstRenderMs = Math.round(performance.now() - State.t0);
+  $('#dMs').textContent = State.firstRenderMs + ' ms';
+  $('#spin').classList.remove('show');
+
+  if (State.noLiveTraffic){
+    Banner.add('이 경로에는 <b>실시간 교통 구간이 없습니다.</b> '
+      + '정체율·연비는 §3.3 L2 시간대 계수만으로 낸 추정치이고 <b>V2는 측정 불가</b>입니다.', 'warn');
+  }
+  if (Provider.usedMock){
+    Banner.add('실 API 키가 없거나 호출이 막혀 <b>목 데이터</b>로 그렸습니다. '
+      + '파일 상단 <code>CONFIG</code>에 TMAP·Kakao 키를 넣고 <code>http://localhost</code>로 열면 실제 데이터로 전환됩니다.', 'warn');
+  }
+
+  /* 첫 렌더 뒤 비동기 — V1의 5초 예산 밖 (§7.4) */
+  returnLegAsync(origin, departAt);
+  if (State.wpOn) waypointsAsync(origin, departAt);
+  if (rest.length > 0) fetchRestAsync(rest, State.courseSetId, departAt, prefKm);
+}
+
+async function fetchRestAsync(rest, csid, departAt, prefKm){
+  for (const c of rest) {
+    if (State.courseSetId !== csid) return; // 조건이 바뀌면 중단
+    const r = await Provider.route(State.origin, c, State.includeHighway);
+    if (State.courseSetId !== csid) return;
+    
+    const f = finalize(c, r, departAt, prefKm);
+    
+    // 전체 리스트에서 해당 후보를 교체하고 다시 랭크를 매긴다
+    let all = State.ranked.map(x => String(x.id) === String(c.id) ? f : x);
+    all = Core.applyBearingPenalty(Core.rankSort(all));
+    
+    const routedRanked = Core.rankSort(all.filter(x => x.routed));
+    const restRanked   = Core.rankSort(all.filter(x => !x.routed));
+    const passed = routedRanked.filter(x => x.jam < JAM_FILTER);
+    const failed = routedRanked.filter(x => x.jam >= JAM_FILTER);
+    
+    State.ranked = [...passed, ...failed, ...restRanked];
+    
+    // 만약 f가 현재 State.picked(1위 또는 사용자가 클릭한 것)보다 좋아서 새로운 1위가 되었다면 알림
+    const newBest = State.ranked[0];
+    if (newBest && String(newBest.id) === String(f.id) && String(State.picked.id) !== String(f.id)) {
+      Toast.clear(); // 기존 대안 알림이 있다면 지우고 최신의 최고 대안 하나만 남긴다.
+      Toast.show(
+        `더 나은 대안 경로 발견!`,
+        `<b>${esc(f.name)}</b> (정체 ${pct(f.jam)} · 편도 ${km1(f.roadKm)}km)`,
+        `이 경로로 확인하기`,
+        `pick('${f.id}')`
+      );
+    }
+    
+    // UI 조용히 갱신 (지도는 안 바뀜)
+    renderAll();
+  }
+}
+
+/* 경로 응답 → 정체율 · 연비 · 점수 (§3.3 · §5.2 · §3.1) */
+function finalize(c, r, departAt, prefKm){
+  const jam = Core.blendCongestion(r.segs, departAt, 1);
+  if (r.live === false) State.noLiveTraffic = true;
+  const total = r.segs.reduce((s,x)=>s+x.km,0) || r.totalKm;
+  const byKind = { highway:0, city:0, jam:0 };
+  for (const s of r.segs){
+    if (s.grade === 'jam' || s.grade === 'slow') byKind.jam += s.km;
+    else if (s.kind === 'highway' || s.kind === 'urbanExpress') byKind.highway += s.km;
+    else byKind.city += s.km;
+  }
+  const mix = { highway:byKind.highway/total, city:byKind.city/total, jam:byKind.jam/total };
+  const roundKm = r.totalKm * 2;                        // §2 거리 표기 규칙: 왕복 = 편도 × 2
+  const parts = Core.fuelParts(roundKm, mix);
+  const kmpl = Core.fuelEconomy(parts);
+  const out = {
+    ...c, routed:true, route:r, jam, mix, parts, kmpl,
+    roadKm:r.totalKm, onewayMin:r.totalMin, estimated:false,
+    hwRatio: mix.highway,
+    char: (c.char||'') + ' · 고속도로 ' + Math.round(mix.highway*100) + '%',
+  };
+  out.score = Core.score(out, prefKm, State.includeHighway);
+  return out;
+}
+
+/* §3.3 L1 → L2 — 귀로. 첫 렌더 뒤에 돌고, 끝나면 숫자만 갱신한다. */
+async function returnLegAsync(origin, departAt){
+  const p = State.picked;
+  if (!p || !p.routed) return;
+  const backAt = new Date(departAt.getTime() + (p.onewayMin + State.stayMin)*60000);
+  const res = await Provider.returnLeg(p, origin, State.includeHighway, backAt);
+  let backJam;
+  if (res.layer === 'L1' && res.route){
+    p.routeLive = res.route;
+    backJam = Core.blendCongestion(res.route.segs, backAt, 1, true);
+    State.layer = 'L1 미래 시각 탐색';
+  } else {
+    /* L2 — 실시간 등급을 지우고 계수 테이블만으로 판정 (α = 0) */
+    const statOnly = p.route.segs.map(s => ({ ...s, grade:null }));
+    p.routeLive = { ...p.route, segs: statOnly };
+    backJam = Core.blendCongestion(statOnly, backAt, 1, true);
+    State.layer = 'L2 시간대 계수';
+  }
+  /* §3.3 L3 — 표본 30건 미만이면 보정하지 않는다 */
+  const samples = Store.get('samples.'+State.zone, 0);
+  if (samples >= 30){
+    const k = Store.get('corr.'+State.zone, 1);
+    backJam = Math.min(1, backJam*k);
+    State.layer += ' + L3 보정';
+  } else {
+    State.layer += ' (L3 보정 없음 · 표본 ' + samples + '/30)';
+  }
+  const lo = Math.max(0, backJam-0.04), hi = backJam+0.04;
+  $('#dLayer').textContent = State.layer;
+  $('#dCalls').textContent = `오늘 ${Net.getDailyCalls()}회 (세션 ${Net.calls}회)`;
+  /* #backJam 은 renderAll 이 그린 뒤에 생긴다. 이 함수는 첫 렌더 뒤에 도니 존재하지만,
+     후보 교체 중이면 없을 수 있어 확인하고 쓴다. */
+  State.backJamText = '귀로 예상 정체 ' + pct(lo) + '~' + pct(hi) + ' (예측)';
+  const el = $('#backJam');
+  if (el) el.textContent = State.backJamText;
+  renderNote();
+  $('#mapLegToggle').classList.remove('hidden');
+  if (p.routeLive && State.mapLeg === 'back') {
+    renderMap();
+  }
+}
+
+/* §6 경유지 — 켰을 때만, 첫 렌더 뒤 비동기 */
+async function waypointsAsync(origin, departAt){
+  const p = State.picked;
+  const box = $('#wpList');
+  if (!p || !p.routed){ box.innerHTML = '<p class="sub">경로가 확정되지 않아 경유지를 찾을 수 없습니다.</p>'; return; }
+  box.innerHTML = '<p class="sub">경유지 찾는 중…</p>';
+
+  const slots = Core.waypointSlots(departAt, p.onewayMin, State.stayMin);
+  if (!slots.length){ box.innerHTML = '<p class="sub">이 시간대에는 해당하는 식사·카페 슬롯이 없습니다. (§6.1)</p>'; return; }
+
+  const results = [];
+  let spent = 0;
+  for (const slot of slots){
+    const center = slot.atDest ? p : pointAtFraction(p.route, slot.key.startsWith('out') ? 0.6 : 0.4);
+    const pool = await Provider.waypoints(center, slot.kind);
+    const scored = pool
+      .filter(x => x.rating == null || x.rating >= WP.minRating)
+      .filter(x => x.reviews == null || x.reviews >= WP.minReviews)
+      .map(x => {
+        const detourMin = Core.haversine(center, x) / 30 * 60 * 2;   // 왕복 우회 근사
+        return { ...x, detourMin, s: Core.poiScore(x, detourMin) };
+      })
+      .sort((a,b) => b.s - a.s);
+
+    let chosen = null, tries = 0;
+    for (const cand of scored){
+      if (tries >= WP.retries) break;
+      tries++;
+      if (cand.detourMin > WP.detourPerSlotMin) continue;
+      if (spent + cand.detourMin > WP.detourTotalMin) continue;
+      chosen = cand; spent += cand.detourMin; break;
+    }
+    results.push({ slot, chosen, alts: scored.slice(0,5),
+      reason: chosen ? null : (scored.length ? '우회 ' + WP.detourPerSlotMin + '분 초과' : '조건에 맞는 곳 없음') });
+  }
+  renderWaypoints(results, spent);
+}
+
+function pointAtFraction(route, f){
+  const segs = route.segs; const total = segs.reduce((s,x)=>s+x.km,0);
+  let acc = 0;
+  for (const s of segs){ acc += s.km; if (acc/total >= f) return s.coords[Math.floor(s.coords.length/2)]; }
+  const last = segs[segs.length-1];
+  return last.coords[last.coords.length-1];
+}
+</script>
+
+<script>
+/* ============================================================================
+ * RENDER (§7.2 · §7.3)
+ * ========================================================================== */
+
+/* §7.4 정점 단순화 — Douglas–Peucker, 허용오차 8 m */
+function simplify(pts, tolKm){
+  if (pts.length < 3) return pts;
+  const tol = tolKm || 0.008;
+  const d = (p,a,b) => {
+    const x=p.lng-a.lng, y=p.lat-a.lat, dx=b.lng-a.lng, dy=b.lat-a.lat;
+    const t = (dx||dy) ? Math.max(0, Math.min(1, (x*dx+y*dy)/(dx*dx+dy*dy))) : 0;
+    const ex=x-t*dx, ey=y-t*dy;
+    return Math.hypot(ex*88, ey*111);
+  };
+  const keep = new Array(pts.length).fill(false);
+  keep[0] = keep[pts.length-1] = true;
+  (function rec(i,j){
+    if (j <= i+1) return;
+    let best=-1, bi=-1;
+    for (let k=i+1;k<j;k++){ const v=d(pts[k],pts[i],pts[j]); if (v>best){best=v;bi=k;} }
+    if (best > tol){ keep[bi]=true; rec(i,bi); rec(bi,j); }
+  })(0, pts.length-1);
+  return pts.filter((_,i)=>keep[i]);
+}
+
+/* §7.2 ③ 등급 변화점에서 분할 — 정점 1개를 공유해 틈이 생기지 않게 한다 */
+function splitByTraffic(coords, levels){
+  const segments = []; let start = 0;
+  for (let i=1;i<=coords.length-1;i++){
+    if (levels[i] !== levels[start] || i === coords.length-1){
+      segments.push({ path: coords.slice(start, i+1), level: levels[start] });
+      start = i;
+    }
+  }
+  return segments;
+}
+function flatten(route){
+  const coords=[], levels=[];
+  for (const s of route.segs){
+    const lv = s.grade || 'none';
+    for (const c of s.coords){ coords.push(c); levels.push(lv); }
+  }
+  return { coords, levels };
+}
+
+/* ── 지도: TMAP SDK ─────────────────────────────────────────────────── */
+const MapView = {
+  map:null, overlays:[], ready:false, failed:false,
+  async init(){
+    if (this.ready || this.failed) return this.ready;
+    if (!hasTmap()){ this.failed = true; return false; }
+    try {
+      /* SDK 태그는 문서 상단에서 파서가 이미 심었다. 여기서는 클래스가 채워지길 기다린다. */
+      await new Promise((res, rej) => {
+        const t0 = Date.now();
+        (function poll(){
+          const T = window.Tmapv2;
+          if (T && typeof T.Map === 'function' && typeof T.LatLng === 'function') return res();
+          if (Date.now() - t0 > 6000) return rej(new Error('SDK 클래스 준비 시간 초과'));
+          setTimeout(poll, 60);
+        })();
+      });
+      this.map = new Tmapv2.Map('map', { center:new Tmapv2.LatLng(37.5665,126.9780), zoom:10, zoomControl:true, scrollwheel:true });
+      this.ready = true; return true;
+    } catch(e){
+      Net.note('지도 SDK 로드 실패 (' + e.message + ') — 정적 SVG 폴백 (§7.3)');
+      this.failed = true; return false;
+    }
+  },
+  clear(){ this.overlays.forEach(o => { try{ o.setMap(null); }catch(e){} }); this.overlays = []; },
+  draw(route, dest, origin, append=false){
+    if (!append) this.clear();
+    const { coords, levels } = flatten(route);
+    const bounds = new Tmapv2.LatLngBounds();
+    for (const seg of splitByTraffic(coords, levels)){
+      const path = simplify(seg.path).map(c => { const ll = new Tmapv2.LatLng(c.lat, c.lng); bounds.extend(ll); return ll; });
+      if (path.length < 2) continue;
+      this.overlays.push(new Tmapv2.Polyline({
+        path, strokeColor: GRADE_COLOR[seg.level] || GRADE_COLOR.none,
+        strokeWeight: seg.level === 'jam' ? 7 : 6,
+        strokeOpacity: 0.95, map: this.map,
+      }));
+    }
+    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(origin.lat, origin.lng), map:this.map, label:'출발' }));
+    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(dest.lat, dest.lng), map:this.map, label:'도착' }));
+    try { this.map.fitBounds(bounds); } catch(e){}
+  },
+};
+
+/* ── Leaflet + OSM — TMAP SDK가 실패했을 때 (§7.3 폴백 렌더러) ───────── */
+const LeafletView = {
+  map:null, overlays:[], ready:false, tileLayer:null, isDark:null,
+  init(){
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (this.ready) {
+      if (this.isDark !== isDark) {
+        this.isDark = isDark;
+        if (this.tileLayer) this.tileLayer.remove();
+        this.tileLayer = L.tileLayer(isDark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+          { attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> \u00a9 <a href="https://carto.com/attributions">CARTO</a>', maxZoom:19 }
+        ).addTo(this.map);
+      }
+      return true;
+    }
+    if (typeof L === 'undefined') return false;
+    try {
+      this.map = L.map('map', { zoomControl:true, scrollWheelZoom:true }).setView([37.5665, 126.978], 10);
+      this.isDark = isDark;
+      this.tileLayer = L.tileLayer(isDark
+        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        { attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> \u00a9 <a href="https://carto.com/attributions">CARTO</a>', maxZoom:19 }
+      ).addTo(this.map);
+      this.ready = true;
+      return true;
+    } catch(e){
+      Net.note('Leaflet 초기화 실패 (' + e.message + ')');
+      return false;
+    }
+  },
+  clear(){ this.overlays.forEach(o => { try{ o.remove(); }catch(e){} }); this.overlays = []; },
+  draw(route, dest, origin, append=false){
+    if (!append) this.clear();
+    const { coords, levels } = flatten(route);
+    const bounds = L.latLngBounds();
+    for (const seg of splitByTraffic(coords, levels)){
+      const path = simplify(seg.path).map(c => { const ll = L.latLng(c.lat, c.lng); bounds.extend(ll); return ll; });
+      if (path.length < 2) continue;
+      const line = L.polyline(path, {
+        color: GRADE_COLOR[seg.level] || GRADE_COLOR.none,
+        weight: seg.level === 'jam' ? 7 : 5, opacity:0.9,
+      }).addTo(this.map);
+      this.overlays.push(line);
+    }
+    const mO = L.circleMarker([origin.lat, origin.lng], { radius:8, color:'#fff', fillColor:'#2563eb', fillOpacity:1, weight:2 })
+      .bindTooltip('출발', { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
+    const mD = L.circleMarker([dest.lat, dest.lng], { radius:8, color:'#fff', fillColor:'#dc2626', fillOpacity:1, weight:2 })
+      .bindTooltip('도착', { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
+    this.overlays.push(mO, mD);
+    try { this.map.fitBounds(bounds, { padding:[30,30] }); } catch(e){}
+    setTimeout(() => { try { this.map.invalidateSize(); } catch(e){} }, 200);
+  },
+};
+
+/* ── §7.3 정적 SVG 폴백 — 타일 없이 경로 형태만 ─────────────────────── */
+function drawSvg(route, origin, dest){
+  const svg = $('#svgfallback');
+  svg.classList.add('show'); $('#map').style.display = 'none';
+  const { coords, levels } = flatten(route);
+  const all = coords.concat([origin, dest]);
+  const xs = all.map(c=>c.lng), ys = all.map(c=>c.lat);
+  const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+  const pad = 34, W = 800, H = 400;
+  const sx = (maxX-minX) ? (W-pad*2)/(maxX-minX) : 1;
+  const sy = (maxY-minY) ? (H-pad*2)/(maxY-minY) : 1;
+  const s  = Math.min(sx, sy);
+  const ox = pad + ((W-pad*2) - (maxX-minX)*s)/2;
+  const oy = pad + ((H-pad*2) - (maxY-minY)*s)/2;
+  const X = c => ox + (c.lng-minX)*s;
+  const Y = c => H - (oy + (c.lat-minY)*s);
+
+  let out = '<rect width="800" height="400" fill="none"/>';
+  for (const seg of splitByTraffic(coords, levels)){
+    const p = simplify(seg.path);
+    if (p.length < 2) continue;
+    const d = p.map((c,i)=>(i?'L':'M') + X(c).toFixed(1) + ' ' + Y(c).toFixed(1)).join(' ');
+    out += '<path d="'+d+'" fill="none" stroke="'+(GRADE_COLOR[seg.level]||GRADE_COLOR.none)
+        +  '" stroke-width="'+(seg.level==='jam'?5:4)+'" stroke-linecap="round" stroke-linejoin="round"/>';
+  }
+  out += '<circle cx="'+X(origin).toFixed(1)+'" cy="'+Y(origin).toFixed(1)+'" r="6" fill="#2563eb" stroke="#fff" stroke-width="2"/>';
+  out += '<circle cx="'+X(dest).toFixed(1)+'" cy="'+Y(dest).toFixed(1)+'" r="6" fill="#dc2626" stroke="#fff" stroke-width="2"/>';
+  out += '<text x="'+X(origin).toFixed(1)+'" y="'+(Y(origin)-12).toFixed(1)+'" font-size="11" fill="currentColor" text-anchor="middle">출발</text>';
+  out += '<text x="'+X(dest).toFixed(1)+'" y="'+(Y(dest)-12).toFixed(1)+'" font-size="11" fill="currentColor" text-anchor="middle">도착</text>';
+  svg.innerHTML = out;
+}
+
+/* ── 패널 ───────────────────────────────────────────────────────────── */
+function renderAll(){
+  const p = State.picked;
+  if (!p) return;
+
+  $('#cName').textContent = p.name;
+  $('#cChar').textContent = p.char + (p.estimated ? ' (추정)' : '');
+  $('#sDist').textContent = km1(p.roadKm);
+  $('#sTime').textContent = p.routed ? hhmm(p.onewayMin*2) : '—';
+  $('#sJam').textContent  = p.routed ? pct(p.jam) : '—';
+  $('#sFuel').textContent = p.routed ? km1(p.kmpl) : '—';
+  if (p.routed) {
+    const roundKm = p.roadKm * 2;
+    const cost = Math.round(roundKm / p.kmpl * State.fuelPrice);
+    $('#sCost').textContent = '약 ' + cost.toLocaleString() + '원';
+  } else {
+    $('#sCost').textContent = '—';
+  }
+
+  const why = [];
+  why.push('출발 ' + State.origin.label);
+  if (p.routed){
+    why.push('주행 ' + hhmm(p.onewayMin*2) + ' + 체류 ' + hhmm(State.stayMin) + ' = 총 ' + hhmm(p.onewayMin*2 + State.stayMin));
+    why.push('편도 정체율 ' + pct(p.jam)
+      + (State.noLiveTraffic ? ' (통계 추정 · V2 측정 불가)'
+                             : (p.jam < JAM_FILTER ? ' — V2 통과' : ' — V2 미달')));
+    why.push('고속 비중 ' + Math.round(p.hwRatio*100) + '%');
+    if (p.penalized) why.push('같은 방위 2번째라 ×0.95 보정됨');
+  } else why.push('경로 미탐색 후보 — 값은 추정치');
+  /* 값을 State에 들고 있다가 그린다. 이 함수가 다시 불려도 placeholder로 되돌아가지 않는다. */
+  why.push('<span id="backJam">' + (State.backJamText || '귀로 예측 계산 중…') + '</span>');
+  $('#cWhy').innerHTML = why.join(' · ');
+
+  /* 후보 목록 */
+  $('#candN').textContent = State.ranked.length;
+  $('#cands').innerHTML = State.ranked.map((c,i) => {
+    const sel = c.id === p.id;
+    const right = c.routed ? ('갈 때 정체 ' + pct(c.jam) + ' · ' + km1(c.kmpl) + ' km/L') : '추정';
+    return '<div class="cand" role="option" aria-selected="'+sel+'" data-id="'+c.id+'">'
+      + '<div class="l"><div class="t">' + (i===0 && c.routed ? '<span class="badge top">1위</span> ':'') + esc(c.name)
+      + (c.routed ? '' : '<span class="badge est">추정</span>') + '</div>'
+      /* 미탐색 후보의 점수는 정체율을 가정값으로 넣은 추정치라 탐색된 후보와
+       * 같은 축에서 비교할 수 없다. 오해를 부르므로 표시하지 않는다. */
+      + '<div class="m">' + esc(c.char) + ' · 편도 ' + km1(c.roadKm) + ' km'
+      + (c.routed ? ' · 점수 ' + c.score.toFixed(3) : ' (추정)') + '</div></div>'
+      + '<div class="r">' + right + '</div></div>';
+  }).join('');
+  const firstRest = State.ranked.findIndex(c => !c.routed);
+  if (firstRest > 0){
+    const nodes = $$('#cands .cand');
+    if (nodes[firstRest]) nodes[firstRest].insertAdjacentHTML('beforebegin',
+      '<p class="sub" style="margin:8px 0 4px">아래는 경로 미탐색 — 누르면 그때 탐색합니다 (§2 ⑥)</p>');
+  }
+  $$('.cand').forEach(el => el.addEventListener('click', () => pick(el.dataset.id)));
+
+  /* 연비표 */
+  if (p.routed){
+    const total = p.parts.reduce((s,x)=>s+x.km,0);
+    $('#fuelBody').innerHTML = p.parts.map(x =>
+      '<tr><td>'+x.label+'</td><td class="n">'+km1(x.km)+' km</td>'
+      + '<td class="n">'+Math.round(x.km/total*100)+'%</td>'
+      + '<td class="n">'+km1(x.kmpl)+' km/L</td></tr>').join('')
+      + '<tr><td><b>왕복 합계</b></td><td class="n"><b>'+km1(total)+' km</b></td><td class="n">100%</td>'
+      + '<td class="n"><b>'+km1(p.kmpl)+' km/L</b></td></tr>';
+    const totalFuelCost = Math.round(total / p.kmpl * State.fuelPrice);
+    $('#fuelNote').innerHTML = '거리 가중 조화평균 (§5.2) · ' + CAR.name
+      + ' 고속 ' + CAR.highway + ' / 복합 ' + CAR.combined + ' km/L 기준'
+      + '<br>예상 주유량 ' + km1(total / p.kmpl) + ' L × ' + State.fuelPrice.toLocaleString() + '원/L = <b>약 ' + totalFuelCost.toLocaleString() + '원</b>';
+  } else {
+    $('#fuelBody').innerHTML = '<tr><td colspan="4" class="sub">경로를 탐색해야 산출됩니다.</td></tr>';
+    $('#fuelNote').textContent = '';
+  }
+
+  /* 지도 */
+  renderMap();
+
+  $('#dCsid').textContent  = State.courseSetId;
+  $('#dCalls').textContent = `오늘 ${Net.getDailyCalls()}회 (세션 ${Net.calls}회)`;
+  $('#dLayer').textContent = State.layer;
+  $('#wpCard').classList.toggle('hidden', !State.wpOn);
+  renderNote();
+}
+
+function renderMap(){
+  const p = State.picked;
+  if (!p || !p.routed) return;
+  const targetRoute = (State.mapLeg === 'back' && p.routeLive) ? p.routeLive : p.route;
+  const o = State.mapLeg === 'back' ? p : State.origin;
+  const d = State.mapLeg === 'back' ? State.origin : p;
+  
+  MapView.init().then(ok => {
+    if (ok){
+      $('#svgfallback').classList.remove('show'); $('#map').style.display='';
+      MapView.draw(targetRoute, d, o);
+    } else {
+      LeafletView.init();
+      if (LeafletView.ready){
+        $('#svgfallback').classList.remove('show'); $('#map').style.display='';
+        LeafletView.draw(targetRoute, d, o);
+      } else {
+        drawSvg(targetRoute, o, d);
+      }
+    }
+  });
+}
+
+function renderNote(){
+  const bits = [];
+  bits.push('밴드 직선 ' + km1(State.band.min) + '~' + km1(State.band.max) + ' km · 우회계수 '
+    + (State.detourUsed || DETOUR_FACTOR_DEFAULT).toFixed(3)
+    + ' → ' + Store.detour(State.zone).toFixed(3) + ' (학습)');
+  if (!MapView.ready && !LeafletView.ready) bits.push('지도 SDK 미사용 — 정적 SVG 렌더 (§7.3)');
+  else if (!MapView.ready && LeafletView.ready) bits.push('Leaflet + OSM 타일 렌더');
+  $('#dNote').innerHTML = esc(bits.join(' · ')) + (Net.notes.length ? '<br>' + Net.notes.map(esc).join('<br>') : '');
+}
+
+function renderWaypoints(results, spent){
+  let idx = 0;
+  $('#wpList').innerHTML = results.map(r => {
+    const s = r.slot;
+    idx++;
+    if (!r.chosen){
+      return '<div class="wp"><div class="ic">'+s.icon+'</div><div class="b">'
+        + '<div class="n">'+s.label+'</div>'
+        + '<div class="x">조건에 맞는 곳을 찾지 못했습니다 ('+esc(r.reason)+')</div></div></div>';
+    }
+    const c = r.chosen;
+    const view = (c.kind==='cafe' && VIEW_KEYWORDS.test(c.reviewText||'')) ? ' · 조망 키워드 있음' : '';
+    const alts = (r.alts||[]).filter(a => a.id !== c.id);
+    const altId = 'alts'+idx;
+    let html = '<div class="wp"><div class="ic">'+s.icon+'</div><div class="b">'
+      + '<div class="n">'+esc(c.name)+(s.predicted?'<span class="badge est">예상</span>':'')
+      + '<span class="badge top">추천</span></div>'
+      + '<div class="d">'+s.label+' · '+fmtTime(s.at)+' 통과 · 우회 약 '+Math.round(c.detourMin)+'분'
+      + (c.rating? ' · 평점 '+c.rating.toFixed(1):'') + (c.hoursKnown===false?' · 영업 여부 미확인':'') + esc(view)
+      + '</div>';
+    if (alts.length){
+      html += '<button class="wp-toggle-alt" onclick="document.getElementById(\''+altId+'\').classList.toggle(\'open\')"> · 대안 '+alts.length+'곳 보기 ▾</button>';
+      html += '<div class="wp-alts" id="'+altId+'">';
+      for (const a of alts){
+        const av = (a.kind==='cafe' && VIEW_KEYWORDS.test(a.reviewText||'')) ? ' · 조망' : '';
+        html += '<div class="wp-alt"><span class="n">'+esc(a.name)+'</span> · 우회 약 '+Math.round(a.detourMin)+'분'
+          + (a.rating? ' · 평점 '+a.rating.toFixed(1):'') + esc(av) + '</div>';
+      }
+      html += '</div>';
+    }
+    html += '</div></div>';
+    return html;
+  }).join('') + '<p class="sub" style="margin:9px 0 0">우회 합계 '
+    + Math.round(spent) + ' / ' + WP.detourTotalMin + '분 (§6.3)</p>';
+}
+
+const fmtTime = d => String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+function pick(id){
+  const c = State.ranked.find(x => String(x.id) === String(id));
+  if (!c) return;
+  if (!c.routed){
+    Banner.add('선택한 후보는 아직 경로를 탐색하지 않았습니다. 탐색 중…', 'info');
+    Provider.route(State.origin, c, State.includeHighway).then(r => {
+      const prefKm = State.preset==='custom' ? State.customKm : PRESETS[State.preset].target;
+      const f = finalize(c, r, new Date(), prefKm);
+      State.ranked = State.ranked.map(x => x.id===c.id ? f : x);
+      State.picked = f; Banner.clear(); renderAll(); returnLegAsync(State.origin, new Date());
+      if (State.wpOn) waypointsAsync(State.origin, new Date());
+    });
+    return;
+  }
+  State.picked = c; renderAll();
+  returnLegAsync(State.origin, new Date());
+  if (State.wpOn) waypointsAsync(State.origin, new Date());
+}
+
+/* ── 컨트롤 ─────────────────────────────────────────────────────────── */
+function wire(){
+  $$('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    $$('[data-preset]').forEach(x => x.setAttribute('aria-pressed', String(x===b)));
+    State.preset = b.dataset.preset;
+    const custom = State.preset === 'custom';
+    $('#distSlider').classList.toggle('hidden', !custom);
+    $('#distVal').classList.toggle('hidden', !custom);
+    run();
+  }));
+  $('#distSlider').addEventListener('input', e => {
+    State.customKm = +e.target.value; $('#distVal').textContent = State.customKm + ' km';
+  });
+  $('#distSlider').addEventListener('change', run);
+  $$('[data-hw]').forEach(b => b.addEventListener('click', () => {
+    $$('[data-hw]').forEach(x => x.setAttribute('aria-pressed', String(x===b)));
+    State.includeHighway = b.dataset.hw === '1'; run();
+  }));
+  $$('[data-mapleg]').forEach(b => b.addEventListener('click', () => {
+    $$('[data-mapleg]').forEach(x => x.setAttribute('aria-pressed', String(x===b)));
+    State.mapLeg = b.dataset.mapleg; renderMap();
+  }));
+  $('#stay').addEventListener('change', e => { State.stayMin = +e.target.value; run(); });
+  $('#zone').addEventListener('change', e => { State.zone = e.target.value; run(); });
+  $('#wpToggle').addEventListener('click', e => {
+    State.wpOn = !State.wpOn;
+    e.target.setAttribute('aria-pressed', String(State.wpOn));
+    $('#wpCard').classList.toggle('hidden', !State.wpOn);
+    if (State.wpOn) waypointsAsync(State.origin, new Date());
+  });
+  $('#run').addEventListener('click', run);
+
+  State.fuelPrice = Store.get('fuelPrice', 1861);
+  $('#fuelType').value = State.fuelPrice;
+  if (!$('#fuelType').value) $('#fuelType').value = 1861; // fallback if stored value is not in options
+  $('#fuelType').addEventListener('change', e => {
+    State.fuelPrice = +e.target.value;
+    Store.set('fuelPrice', State.fuelPrice);
+    renderAll();
+  });
+
+  $('#themeToggle').addEventListener('click', e => {
+    let t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('theme', t);
+    e.target.textContent = t === 'dark' ? '🌙' : '☀️';
+    if (LeafletView.ready) LeafletView.init(); // 다크/라이트 타일 리렌더링
+  });
+  $('#themeToggle').textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '🌙' : '☀️';
+
+  paintKeyState();
+
+  fetch('/api/fuel').then(r => r.json()).then(data => {
+    if (data.gasoline) {
+      const el = $('#fuelType');
+      const cur = el.value;
+      el.options[0].text = `휘발유 (${data.gasoline.toLocaleString()}원)`;
+      el.options[0].value = data.gasoline;
+      el.options[1].text = `고급휘발유 (${data.premium.toLocaleString()}원)`;
+      el.options[1].value = data.premium;
+      el.options[2].text = `경유 (${data.diesel.toLocaleString()}원)`;
+      el.options[2].value = data.diesel;
+      if (cur == 1861) el.value = data.gasoline;
+      else if (cur == 2320) el.value = data.premium;
+      else if (cur == 1845) el.value = data.diesel;
+      if (el.value) {
+        State.fuelPrice = +el.value;
+        Store.set('fuelPrice', State.fuelPrice);
+        renderAll();
+      }
+    }
+  }).catch(e => console.log('Live fuel fetch failed or not running via server.py', e));
+}
+
+function paintKeyState(){
+  const on = [CONFIG.TMAP_APP_KEY?'TMAP':null, CONFIG.KAKAO_REST_KEY?'Kakao':null].filter(Boolean);
+  const el = $('#keyState');
+  if (!CONFIG.KEY_FILE_FOUND){
+    el.textContent = 'config.local.js 없음 · 목 데이터';
+  } else if (!on.length){
+    el.textContent = 'config.local.js 비어 있음 · 목 데이터';
+  } else {
+    el.textContent = 'config.local.js · ' + on.join(' + ') + ' 사용 중'
+      + (on.length === 2 ? '' : ' · 나머지는 목 데이터');
+  }
+}
+
+wire();
+run();
+</script>
+</body>
+</html>
