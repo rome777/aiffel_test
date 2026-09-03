@@ -14,3 +14,4 @@ dist/
 
 # 배포용 구성 — 키 포함
 wrangler.deploy.toml
+.wrangler/
