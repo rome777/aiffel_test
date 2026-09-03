@@ -1,0 +1,12 @@
+name = "smooth-drive"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# dist/ 만 노출한다. 저장소 루트를 그대로 서빙하면 config.local.js 가 함께 나간다.
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+# 키는 여기 적지 않는다. wrangler secret put 으로 넣는다.
+#   npx wrangler secret put TMAP_APP_KEY
+#   npx wrangler secret put KAKAO_REST_KEY
