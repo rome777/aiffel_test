@@ -996,17 +996,23 @@ async function resolveOrigin(){
     const p = await geocode(typed);
     if (p) { State.originIsLive = false; return { ...Core.snapToGrid(p), label: typed }; }
   }
-  const pos = await new Promise(res => {
-    if (!navigator.geolocation) return res(null);
+  /* 8초 · maximumAge 0 — 실내·와이파이 기반 위치는 2~3초씩 걸리기도 한다.
+   * 짧게 잡으면 위치를 못 받은 게 아니라 늦게 받은 것뿐인데도 앵커로 떨어진다. */
+  const geo = await new Promise(res => {
+    if (!navigator.geolocation) return res({ ok:false, reason:'브라우저가 위치 정보를 지원하지 않습니다' });
     navigator.geolocation.getCurrentPosition(
-      p => res({ lat:p.coords.latitude, lng:p.coords.longitude }),
-      () => res(null), { timeout:2500, maximumAge:600000 });
+      p => res({ ok:true, lat:p.coords.latitude, lng:p.coords.longitude }),
+      e => res({ ok:false, reason: e.code === 1 ? '위치 권한이 거부되어 있습니다 — 브라우저 주소창의 사이트 설정에서 허용해 주세요'
+                        : e.code === 2 ? '위치를 확인할 수 없습니다'
+                        : '위치 확인 시간이 초과됐습니다' }),
+      { timeout:8000, maximumAge:0 });
   });
-  if (pos){
+  if (geo.ok){
     State.originIsLive = true;
-    return { ...Core.snapToGrid(pos), label:'현재 위치' };
+    return { ...Core.snapToGrid(geo), label:'현재 위치' };
   }
   State.originIsLive = false;
+  Net.note(geo.reason + ' — 출발 존 앵커를 대신 씁니다 (§1)');
   const a = ANCHORS[State.zone];
   return { lat:a.lat, lng:a.lng, label: a.name + ' · ' + a.ref + ' 앵커' };
 }
