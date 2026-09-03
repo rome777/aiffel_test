@@ -280,6 +280,14 @@ graph LR
 
 `index.html`은 `CONFIG.PROXY` 플래그 하나로 두 모드를 같은 파일에서 분기합니다. 빌드는 이 플래그를 켜는 치환 한 줄뿐입니다.
 
+### 지도가 TMAP이 아니라 Leaflet인 이유
+
+프록시는 REST API 호출(`/api/tmap/routes` 등)만 대신해 줄 수 있습니다. TMAP 지도 타일을 그리는 **JS SDK는 브라우저에서 직접 로드되는 스크립트**라 대신할 수 없고, 로드하려면 `<script src="...&appKey=...">` 형태로 appKey가 그대로 URL에 박혀야 합니다. "키를 숨긴 채로 SDK만 로드"는 구조상 불가능합니다.
+
+그래서 배포 빌드는 SDK 로더 자체를 건너뜁니다 — `window.SD_KEYS`가 없으니 `if (!K.tmap) return`에 걸려 스크립트 태그가 만들어지지 않고, `MapView.init()`이 실패로 처리돼 자동으로 **Leaflet + OSM 폴백**(§6)으로 넘어갑니다. 경로선·정체 색상 구분·정체 판정 로직은 실 데이터 그대로 동작하고, 지도 배경 타일만 TMAP 대신 OSM으로 바뀝니다.
+
+**현재는 이 상태를 그대로 둡니다.** TMAP 지도를 배포판에도 쓰려면 appKey를 브라우저에 노출시키거나(위험 감수), TMAP 콘솔에서 이 키에 배포 도메인(`smooth-drive.rome777.workers.dev`)만 도메인 화이트리스트로 걸어 노출을 허용해야 합니다 — 둘 다 하지 않기로 했습니다.
+
 ```bash
 node build.mjs                              # index.html → dist/index.html (SD_PROXY=true로 치환)
 npx wrangler deploy -c wrangler.deploy.toml  # dist/를 정적 자산으로, worker.js를 API로 배포
