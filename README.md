@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://smooth-drive.rome777.workers.dev">
-    <img src="deploy-button.svg" width="400" alt="배포된 앱 열기">
+    <img src="deploy-button.svg" width="267" alt="배포된 앱 열기">
   </a>
 </p>
 
@@ -14,6 +14,6 @@
 
 | 문서 | 내용 |
 | --- | --- |
-| **[SPEC.md](SPEC.md)** | 설계 개요 — 구조, 동작 요약, 핵심 숫자, 한계 (먼저 읽으세요) |
+| **[SPEC.md](SPEC.md)** | 설계 개요 — 구조, 동작 요약, 정해둔 기준, 한계 (먼저 읽으세요) |
 | **[SPEC-DETAIL.md](SPEC-DETAIL.md)** | 상세 설계 — 코스 선정·순위 산식·교통 예측·연비 계산 규칙 |
 | **[OPERATIONS.md](OPERATIONS.md)** | 운영 — 실행·배포, 검증 기준, 구현 현황 |

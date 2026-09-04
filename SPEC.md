@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://smooth-drive.rome777.workers.dev">
-    <img src="deploy-button.svg" width="400" alt="배포된 앱 열기">
+    <img src="deploy-button.svg" width="267" alt="배포된 앱 열기">
   </a>
 </p>
 
@@ -67,7 +67,7 @@ graph LR
 - 순위는 AI가 아니라 **정해진 규칙**이 매깁니다. 같은 조건에 항상 같은 답이 나와야 검증할 수 있기 때문입니다
 - 출발지·목적지를 직접 입력하면 그 경로로 바꿔 줍니다
 
-## 핵심 숫자
+## 정해둔 기준
 
 | 항목 | 값 |
 | --- | --- |
