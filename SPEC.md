@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://smooth-drive.rome777.workers.dev">
-    <img src="deploy-button.svg?v=2" width="267" alt="배포된 앱 열기">
+    <img src="deploy.svg" width="267" alt="배포된 앱 열기">
   </a>
 </p>
 
