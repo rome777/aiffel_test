@@ -1388,32 +1388,45 @@ const MapView = {
   },
 };
 
-/* ── Leaflet + OSM — TMAP SDK가 실패했을 때 (§7.3 폴백 렌더러) ───────── */
+/* ── Leaflet + OSM — TMAP SDK가 실패했을 때 (§7.3 폴백 렌더러) ─────────
+ * CARTO 타일은 API 키를 요구하게 되어 지도에 "API KEY REQUIRED" 워터마크가
+ * 찍힌다. 키 없이 쓸 수 있는 OSM 기본 타일로 바꾸고, 다크 테마는 키 없는
+ * 다크 타일 제공자가 없어 타일 레이어에 CSS 필터를 씌워 만든다. */
+const OSM_TILE = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const OSM_OPTS = {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  maxZoom: 19,
+};
+
 const LeafletView = {
   map:null, overlays:[], ready:false, tileLayer:null, isDark:null,
+  /* 색을 반전하고 색상환을 180도 돌리면 지형·도로 색조를 유지한 채 어두워진다. */
+  applyTheme(isDark){
+    const pane = this.map && this.map.getPane('tilePane');
+    if (pane) pane.style.filter = isDark
+      ? 'invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9)'
+      : '';
+  },
   init(){
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (this.ready) {
       if (this.isDark !== isDark) {
         this.isDark = isDark;
         if (this.tileLayer) this.tileLayer.remove();
-        this.tileLayer = L.tileLayer(isDark
-          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-          : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-          { attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> \u00a9 <a href="https://carto.com/attributions">CARTO</a>', maxZoom:19 }
-        ).addTo(this.map);
+        this.tileLayer = L.tileLayer(OSM_TILE, OSM_OPTS).addTo(this.map);
+        this.applyTheme(isDark);
       }
       return true;
     }
     if (typeof L === 'undefined') return false;
     try {
-      this.map = L.map('map', { zoomControl:true, scrollWheelZoom:true }).setView([37.5665, 126.978], 10);
+      /* fadeAnimation:false — 페이드가 중간에 멈춰 타일이 반투명으로 남는 일이 있었다.
+       * 끄면 타일이 로드되는 즉시 불투명하게 그려진다. */
+      this.map = L.map('map', { zoomControl:true, scrollWheelZoom:true, fadeAnimation:false })
+        .setView([37.5665, 126.978], 10);
       this.isDark = isDark;
-      this.tileLayer = L.tileLayer(isDark
-        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-        { attribution:'\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> \u00a9 <a href="https://carto.com/attributions">CARTO</a>', maxZoom:19 }
-      ).addTo(this.map);
+      this.tileLayer = L.tileLayer(OSM_TILE, OSM_OPTS).addTo(this.map);
+      this.applyTheme(isDark);
       this.ready = true;
       return true;
     } catch(e){
@@ -1440,8 +1453,14 @@ const LeafletView = {
     const mD = L.circleMarker([dest.lat, dest.lng], { radius:8, color:'#fff', fillColor:'#dc2626', fillOpacity:1, weight:2 })
       .bindTooltip('도착', { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
     this.overlays.push(mO, mD);
-    try { this.map.fitBounds(bounds, { padding:[30,30] }); } catch(e){}
-    setTimeout(() => { try { this.map.invalidateSize(); } catch(e){} }, 200);
+    /* 컨테이너 크기를 먼저 확정해야 한다. 크기가 0인 상태로 fitBounds 하면
+     * Leaflet이 maxZoom(19)까지 확대해 버려 경로가 화면 밖으로 나간다.
+     * 레이아웃이 늦게 잡히는 경우가 있어 잠시 뒤 한 번 더 맞춘다. */
+    const fit = () => {
+      try { this.map.invalidateSize(); this.map.fitBounds(bounds, { padding:[30,30] }); } catch(e){}
+    };
+    fit();
+    setTimeout(fit, 200);
   },
 };
 
