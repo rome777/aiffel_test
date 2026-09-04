@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="56" viewBox="0 0 400 56" role="img" aria-label="배포된 앱 열기">
+  <rect x="0.5" y="0.5" width="399" height="55" rx="8" fill="#1f883d" stroke="#1a7f37"/>
+  <text x="200" y="35"
+        font-family="system-ui, -apple-system, 'Segoe UI', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif"
+        font-size="19" font-weight="600" fill="#ffffff" text-anchor="middle">배포된 앱 열기</text>
+</svg>
