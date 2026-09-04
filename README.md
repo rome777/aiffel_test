@@ -4,7 +4,11 @@
 
 **아무것도 입력하지 않아도** 됩니다 — 서울 중심부~수도권 서부 기준으로 코스를 그 자리에서 만들어 보여줍니다.
 
-🔗 **배포:** https://smooth-drive.rome777.workers.dev
+<p align="center">
+  <a href="https://smooth-drive.rome777.workers.dev">
+    <img src="deploy-button.svg" width="400" alt="배포된 앱 열기">
+  </a>
+</p>
 
 ## 문서
 
