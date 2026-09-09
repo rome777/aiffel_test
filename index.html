@@ -330,11 +330,15 @@ const ANCHORS = {
 /* ── §2 ② 반경 밴드 ── */
 const DETOUR_FACTOR_DEFAULT = 1.35;
 const PRESETS = {
-  light : { label:'🚲 가볍게', target:15 },
+  /* targetMin — 가볍게는 "짧은 거리"보다 "짧은 시간"이 진짜 목적이라, 막히면
+   * 거리를 줄여서라도 편도 30분 근처를 맞춘다 (실제 경로 탐색 뒤에만 적용,
+   * §3.1). 보통·길게는 아직 거리 목표만 쓴다. */
+  light : { label:'🚲 가볍게', target:15, targetMin:30 },
   normal: { label:'🚗 보통',   target:40 },
   long  : { label:'🛣️ 길게',   target:60 },
 };
 const BAND_LO = 0.6, BAND_HI = 1.2;
+const URBAN_KMH_ESTIMATE = 25;   // targetMin 사전 순위용 도심 평균 속도 가정치 (§3.1)
 
 /* ── §2 ③ 목적지 카테고리 → 성격 라벨 ── */
 const CATEGORY_CHAR = [
@@ -487,10 +491,16 @@ const Core = {
     ];
   },
 
-  /* §3.1 랭킹 점수 */
-  score(c, prefKm, includeHighway){
+  /* §3.1 랭킹 점수 — targetMin이 있고 실제 소요 시간(onewayMin)을 아는
+   * 후보(경로 탐색 후)면 "거리"가 아니라 "시간"이 목표에 맞는지로 dev를 낸다.
+   * 가볍게는 짧은 거리가 아니라 짧은 시간이 목적이라 막히면 더 가까운
+   * 후보로 대체돼야 하기 때문 (§3.1). 탐색 전 추정 단계는 onewayMin이
+   * 없으니 기존 거리 기준을 그대로 쓴다. */
+  score(c, prefKm, includeHighway, targetMin){
     const w = includeHighway ? W : W_NO_HW;
-    const dev = Math.min(1, Math.abs(c.roadKm - prefKm) / prefKm);
+    const dev = (targetMin && c.onewayMin != null)
+      ? Math.min(1, Math.abs(c.onewayMin - targetMin) / targetMin)
+      : Math.min(1, Math.abs(c.roadKm - prefKm) / prefKm);
     return w.jam*(1-c.jam) + w.hw*(c.hwRatio||0) + w.dist*(1-dev);
   },
 
@@ -1054,6 +1064,7 @@ async function run(){
   Toast.clear();
 
   const prefKm = State.preset === 'custom' ? State.customKm : PRESETS[State.preset].target;
+  const targetMin = State.preset === 'custom' ? null : PRESETS[State.preset].targetMin;
   const origin = await resolveOrigin();
   State.origin = origin;
   const detour = Store.detour(State.zone);
@@ -1105,17 +1116,24 @@ async function run(){
   Store.set('snapshot', { at:Date.now(), id:State.courseSetId, origin, band:State.band, cands });
   State.cands = cands;
 
-  /* §2 ⑥ 상위 3개만 경로 탐색 — 대략 거리 기준 사전 순위 */
-  const pre = Core.rankSort(cands.map(c => ({
-    ...c, jam:0.05, hwRatio: State.includeHighway?0.5:0,
-    score: Core.score({ ...c, jam:0.05, hwRatio:State.includeHighway?0.5:0 }, prefKm, State.includeHighway),
-  })));
+  /* §2 ⑥ 상위 3개만 경로 탐색 — 대략 거리 기준 사전 순위.
+   * targetMin이 있으면(가볍게) 아직 경로를 안 탐색해 실제 소요 시간을 모른다.
+   * 평균 속도로 추정해봐도 정체 편차가 커서(§3.1 실측 참고) 순서가 자주
+   * 틀리므로, "짧을수록 시간 목표를 맞출 가능성이 높다"고 보고 거리가 가장
+   * 짧은 후보부터 탐색한다 — 그래야 실제로 30분 근처가 나올 후보가
+   * top3에도 못 들어 영영 추천되지 못하는 일이 없다. */
+  const preRanked = Core.rankSort(cands.map(c => {
+    const est = { ...c, jam:0.05, hwRatio: State.includeHighway?0.5:0 };
+    if (targetMin) est.onewayMin = c.roadKm / URBAN_KMH_ESTIMATE * 60;
+    return { ...est, score: Core.score(est, prefKm, State.includeHighway, targetMin) };
+  }));
+  const pre = targetMin ? [...preRanked].sort((a,b) => a.roadKm - b.roadKm) : preRanked;
   const top3 = pre.slice(0, 3);
   const departAt = new Date();
 
   const routed = await Promise.all(top3.map(async c => {
     const r = await Provider.route(origin, c, State.includeHighway);
-    return finalize(c, r, departAt, prefKm);
+    return finalize(c, r, departAt, prefKm, targetMin);
   }));
 
   /* 탐색하지 않은 후보는 추정값을 유지한 채 목록에만 남는다 (§2 ⑥) */
@@ -1158,17 +1176,17 @@ async function run(){
   /* 첫 렌더 뒤 비동기 — V1의 5초 예산 밖 (§7.4) */
   returnLegAsync(origin, departAt);
   if (State.wpOn) waypointsAsync(origin, departAt);
-  if (rest.length > 0) fetchRestAsync(rest, State.courseSetId, departAt, prefKm);
+  if (rest.length > 0) fetchRestAsync(rest, State.courseSetId, departAt, prefKm, targetMin);
 }
 
-async function fetchRestAsync(rest, csid, departAt, prefKm){
+async function fetchRestAsync(rest, csid, departAt, prefKm, targetMin){
   for (const c of rest) {
     if (State.courseSetId !== csid) return; // 조건이 바뀌면 중단
     const r = await Provider.route(State.origin, c, State.includeHighway);
     if (State.courseSetId !== csid) return;
     
-    const f = finalize(c, r, departAt, prefKm);
-    
+    const f = finalize(c, r, departAt, prefKm, targetMin);
+
     // 전체 리스트에서 해당 후보를 교체하고 다시 랭크를 매긴다
     let all = State.ranked.map(x => String(x.id) === String(c.id) ? f : x);
     all = Core.applyBearingPenalty(Core.rankSort(all));
@@ -1198,7 +1216,7 @@ async function fetchRestAsync(rest, csid, departAt, prefKm){
 }
 
 /* 경로 응답 → 정체율 · 연비 · 점수 (§3.3 · §5.2 · §3.1) */
-function finalize(c, r, departAt, prefKm){
+function finalize(c, r, departAt, prefKm, targetMin){
   const jam = Core.blendCongestion(r.segs, departAt, 1);
   if (r.live === false) State.noLiveTraffic = true;
   const total = r.segs.reduce((s,x)=>s+x.km,0) || r.totalKm;
@@ -1218,7 +1236,7 @@ function finalize(c, r, departAt, prefKm){
     hwRatio: mix.highway,
     char: (c.char||'') + ' · 고속도로 ' + Math.round(mix.highway*100) + '%',
   };
-  out.score = Core.score(out, prefKm, State.includeHighway);
+  out.score = Core.score(out, prefKm, State.includeHighway, targetMin);
   return out;
 }
 
@@ -1479,34 +1497,20 @@ const OSM_OPTS = {
 };
 
 const LeafletView = {
-  map:null, overlays:[], wpOverlays:[], ready:false, tileLayer:null, isDark:null,
-  /* 색을 반전하고 색상환을 180도 돌리면 지형·도로 색조를 유지한 채 어두워진다. */
-  applyTheme(isDark){
-    const pane = this.map && this.map.getPane('tilePane');
-    if (pane) pane.style.filter = isDark
-      ? 'invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9)'
-      : '';
-  },
+  /* 배포판은 TMAP JS SDK 키를 클라이언트에 노출하지 않아 항상 이 지도로
+   * 폴백한다 — 즉 "운영 지도"는 사실상 이거다. 다크 테마를 색 반전으로
+   * 흉내내면 위성/도로 색이 뒤틀려 실제 지도처럼 안 보이므로, 앱 테마와
+   * 상관없이 타일은 항상 원래 색(라이트)으로 둔다. */
+  map:null, overlays:[], wpOverlays:[], ready:false, tileLayer:null,
   init(){
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    if (this.ready) {
-      if (this.isDark !== isDark) {
-        this.isDark = isDark;
-        if (this.tileLayer) this.tileLayer.remove();
-        this.tileLayer = L.tileLayer(OSM_TILE, OSM_OPTS).addTo(this.map);
-        this.applyTheme(isDark);
-      }
-      return true;
-    }
+    if (this.ready) return true;
     if (typeof L === 'undefined') return false;
     try {
       /* fadeAnimation:false — 페이드가 중간에 멈춰 타일이 반투명으로 남는 일이 있었다.
        * 끄면 타일이 로드되는 즉시 불투명하게 그려진다. */
       this.map = L.map('map', { zoomControl:true, scrollWheelZoom:true, fadeAnimation:false })
         .setView([37.5665, 126.978], 10);
-      this.isDark = isDark;
       this.tileLayer = L.tileLayer(OSM_TILE, OSM_OPTS).addTo(this.map);
-      this.applyTheme(isDark);
       this.ready = true;
       return true;
     } catch(e){
@@ -1783,7 +1787,8 @@ function pick(id){
     Banner.add('선택한 후보는 아직 경로를 탐색하지 않았습니다. 탐색 중…', 'info');
     Provider.route(State.origin, c, State.includeHighway).then(r => {
       const prefKm = State.preset==='custom' ? State.customKm : PRESETS[State.preset].target;
-      const f = finalize(c, r, new Date(), prefKm);
+      const targetMin = State.preset==='custom' ? null : PRESETS[State.preset].targetMin;
+      const f = finalize(c, r, new Date(), prefKm, targetMin);
       State.ranked = State.ranked.map(x => x.id===c.id ? f : x);
       State.picked = f; Banner.clear(); renderAll(); returnLegAsync(State.origin, new Date());
       if (State.wpOn) waypointsAsync(State.origin, new Date());
