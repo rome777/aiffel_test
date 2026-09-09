@@ -56,6 +56,9 @@ input[type=range]{accent-color:var(--accent);width:150px}
 
 .mapwrap{position:relative;height:380px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow)}
 #map{position:absolute;inset:0}
+/* TMAP SDK가 라벨을 배경 없는 <span>으로 지도 위에 직접 찍는다. 흰 헤일로를 둘러
+ * 도로·위성 등 어떤 타일 색 위에서도 글씨가 묻히지 않게 한다. */
+#map span{color:#111827 !important;font-weight:600 !important;text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 1px #fff !important}
 /* SVG는 replaced element라 inset:0만으로는 늘어나지 않고 viewBox의 고유 비율(2:1)로
    높이가 잡혀 컨테이너를 넘친다. width/height를 명시해야 letterbox가 제대로 걸린다. */
 #svgfallback{position:absolute;inset:0;width:100%;height:100%;display:none}
@@ -1360,6 +1363,17 @@ function flatten(route){
   return { coords, levels };
 }
 
+/* 경유지 마커 아이콘 — 기본 "A" 핀 대신 이모지 배지를 직접 그려 data URI로 준다.
+ * 배경 흰 원 + 색 테두리라 위성/도로 어느 타일 위에서도 잘 보인다. */
+const WP_PIN_COLOR = { food:'#ea580c', cafe:'#78350f' };
+function emojiMarkerIcon(emoji, size, borderColor){
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+size+'" height="'+size+'">'
+    + '<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+(size/2-1.5)+'" fill="#fff" stroke="'+(borderColor||'#2563eb')+'" stroke-width="2"/>'
+    + '<text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-size="'+Math.round(size*0.55)+'">'+emoji+'</text>'
+    + '</svg>';
+  return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+}
+
 /* ── 지도: TMAP SDK ─────────────────────────────────────────────────── */
 const MapView = {
   map:null, overlays:[], wpOverlays:[], ready:false, failed:false,
@@ -1411,12 +1425,16 @@ const MapView = {
     if (!this.map) return;
     for (const r of results){
       const c = r.chosen; if (!c) continue;
+      const color = WP_PIN_COLOR[c.kind] || '#2563eb';
       this.wpOverlays.push(new Tmapv2.Marker({
-        position:new Tmapv2.LatLng(c.lat, c.lng), map:this.map, label:r.slot.icon + ' ' + c.name,
+        position:new Tmapv2.LatLng(c.lat, c.lng), map:this.map,
+        icon: emojiMarkerIcon(r.slot.icon, 28, color), iconSize:new Tmapv2.Size(28,28),
+        label:c.name,
       }));
       for (const a of (r.alts||[]).filter(x => x.id !== c.id)){
         this.wpOverlays.push(new Tmapv2.Marker({
-          position:new Tmapv2.LatLng(a.lat, a.lng), map:this.map, label:r.slot.icon,
+          position:new Tmapv2.LatLng(a.lat, a.lng), map:this.map,
+          icon: emojiMarkerIcon(r.slot.icon, 18, WP_PIN_COLOR[a.kind] || '#2563eb'), iconSize:new Tmapv2.Size(18,18),
         }));
       }
     }
