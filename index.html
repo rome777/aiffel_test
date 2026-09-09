@@ -1430,8 +1430,16 @@ const MapView = {
       }));
     }
     const oName = origin.label || origin.name, dName = dest.label || dest.name;
-    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(origin.lat, origin.lng), map:this.map, label:'출발' + (oName ? ' · ' + oName : '') }));
-    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(dest.lat, dest.lng), map:this.map, label:'도착' + (dName ? ' · ' + dName : '') }));
+    this.overlays.push(new Tmapv2.Marker({
+      position:new Tmapv2.LatLng(origin.lat, origin.lng), map:this.map,
+      icon: emojiMarkerIcon('🚩', 28, '#2563eb'), iconSize:new Tmapv2.Size(28,28),
+      label:'출발' + (oName ? ' · ' + oName : ''),
+    }));
+    this.overlays.push(new Tmapv2.Marker({
+      position:new Tmapv2.LatLng(dest.lat, dest.lng), map:this.map,
+      icon: emojiMarkerIcon('🏁', 28, '#dc2626'), iconSize:new Tmapv2.Size(28,28),
+      label:'도착' + (dName ? ' · ' + dName : ''),
+    }));
     try { this.map.fitBounds(bounds); } catch(e){}
   },
   clearWaypoints(){ this.wpOverlays.forEach(o => { try{ o.setMap(null); }catch(e){} }); this.wpOverlays = []; },
