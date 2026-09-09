@@ -566,11 +566,12 @@ const Core = {
     const isMeal = (d) => { const hh = h(d); return (hh >= 11 && hh < 14) || (hh >= 17 && hh < 21); };
     const isCafe = (d) => { const hh = h(d); return (hh >= 10 && hh < 22); };
 
-    if (isMeal(midOut)) slots.push({ key:'outMeal', icon:'🍚', label:'가는 길 식사', kind:'food',  at:midOut,    predicted:false });
-    if (isCafe(at(onewayMin*0.8))) slots.push({ key:'outCafe', icon:'☕', label:'가는 길 카페', kind:'cafe', at:at(onewayMin*0.8), predicted:false });
-    if (isCafe(backStart)) slots.push({ key:'backCafe', icon:'☕', label:'오는 길 카페', kind:'cafe', at:backStart, predicted:true });
-    if (isMeal(backEnd))   slots.push({ key:'backMeal', icon:'🍚', label:'오는 길 식사', kind:'food', at:backEnd,   predicted:true });
-
+    /* 시간대가 안 맞아도 슬롯 자체는 만든다 — 화면에서 아예 사라지면 왜
+     * 안 뜨는지 알 수 없으니, timeOk:false로 표시해 이유를 보여준다. */
+    slots.push({ key:'outMeal', icon:'🍚', label:'가는 길 식사', kind:'food',  at:midOut,    predicted:false, timeOk:isMeal(midOut) });
+    slots.push({ key:'outCafe', icon:'☕', label:'가는 길 카페', kind:'cafe', at:at(onewayMin*0.8), predicted:false, timeOk:isCafe(at(onewayMin*0.8)) });
+    slots.push({ key:'backCafe', icon:'☕', label:'오는 길 카페', kind:'cafe', at:backStart, predicted:true, timeOk:isCafe(backStart) });
+    slots.push({ key:'backMeal', icon:'🍚', label:'오는 길 식사', kind:'food', at:backEnd,   predicted:true, timeOk:isMeal(backEnd) });
 
     return slots.slice(0, WP.maxSlots);
   },
@@ -1272,6 +1273,10 @@ async function waypointsAsync(origin, departAt){
   const results = [];
   let spent = 0;
   for (const slot of slots){
+    if (!slot.timeOk){
+      results.push({ slot, chosen:null, alts:[], reason:'식사·카페 시간대가 아님 (§6.1)' });
+      continue;
+    }
     /* 가는 길 슬롯은 출발→목적지 구간의 경과 비율로, 오는 길 슬롯은 (같은 길을
      * 되짚어 온다고 보고) 그 비율을 뒤집어 각자 다른 지점을 검색한다.
      * 예전엔 '가는 길' 두 슬롯이 같은 지점을, '오는 길' 두 슬롯도 목적지 한
@@ -1712,9 +1717,10 @@ function renderWaypoints(results, spent){
     const s = r.slot;
     idx++;
     if (!r.chosen){
+      const msg = s.timeOk === false ? esc(r.reason) : '조건에 맞는 곳을 찾지 못했습니다 (' + esc(r.reason) + ')';
       return '<div class="wp"><div class="ic">'+s.icon+'</div><div class="b">'
         + '<div class="n">'+s.label+'</div>'
-        + '<div class="x">조건에 맞는 곳을 찾지 못했습니다 ('+esc(r.reason)+')</div></div></div>';
+        + '<div class="x">'+msg+'</div></div></div>';
     }
     const c = r.chosen;
     const view = (c.kind==='cafe' && VIEW_KEYWORDS.test(c.reviewText||'')) ? ' · 조망 키워드 있음' : '';
