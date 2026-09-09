@@ -179,7 +179,8 @@ footer code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:1
       </div>
       <div class="grp"><span class="lab">출발 존</span>
         <select id="zone">
-          <option value="Z1" selected>Z1 서울 중심부</option>
+          <option value="auto" selected>📍 현재 위치 (자동)</option>
+          <option value="Z1">Z1 서울 중심부</option>
           <option value="Z2">Z2 서울 서부</option>
           <option value="Z3">Z3 수도권 서부</option>
         </select>
@@ -320,12 +321,30 @@ const API = {
 /* ── 차량 제원 (§4.1 실연비 이력 없을 때 공인연비로 대체) ── */
 const CAR = { highway: 15.0, combined: 12.0, name: '공인연비 기본값' };
 
-/* ── §2 출발 앵커 — 위치 거부 시에만 쓰는 유일한 고정 좌표 ── */
+/* ── §2 출발 앵커 — 위치가 없거나(권한 거부) 사용자가 존을 직접 골랐을 때 쓴다.
+ * 존 하나에 실제 지점을 여러 개 둬서, 고를 때마다(§2 ①) 그중 하나로 조금씩
+ * 달라지게 한다 — 예: 수도권 서부는 김포·인천·안산 중 하나. */
 const ANCHORS = {
-  Z1: { name: 'Z1 서울 중심부', ref: '광화문',        lng: 126.9769, lat: 37.5759 },
-  Z2: { name: 'Z2 서울 서부',   ref: '강서구청',      lng: 126.8495, lat: 37.5509 },
-  Z3: { name: 'Z3 수도권 서부', ref: '김포 한강신도시', lng: 126.6980, lat: 37.6440 },
+  Z1: { name: 'Z1 서울 중심부', options: [
+    { ref:'광화문',   lng:126.9769, lat:37.5759 },
+    { ref:'강남역',   lng:127.0276, lat:37.4979 },
+    { ref:'여의도',   lng:126.9246, lat:37.5219 },
+  ]},
+  Z2: { name: 'Z2 서울 서부', options: [
+    { ref:'강서구청', lng:126.8495, lat:37.5509 },
+    { ref:'목동',     lng:126.8756, lat:37.5264 },
+    { ref:'김포공항', lng:126.8020, lat:37.5583 },
+  ]},
+  Z3: { name: 'Z3 수도권 서부', options: [
+    { ref:'김포 한강신도시', lng:126.6980, lat:37.6440 },
+    { ref:'인천 구월동',     lng:126.7052, lat:37.4494 },
+    { ref:'안산 고잔동',     lng:126.8219, lat:37.3175 },
+  ]},
 };
+function pickAnchor(zone){
+  const opts = ANCHORS[zone].options;
+  return opts[Math.floor(Math.random()*opts.length)];
+}
 
 /* ── §2 ② 반경 밴드 ── */
 const DETOUR_FACTOR_DEFAULT = 1.35;
@@ -949,7 +968,7 @@ const pct = v => (v*100).toFixed(1) + '%';
 const hhmm = m => { const h=Math.floor(m/60), r=Math.round(m%60); return h ? h+'시간 '+r+'분' : r+'분'; };
 
 const State = {
-  preset:'normal', customKm:40, includeHighway:true, stayMin:60, zone:'Z1',
+  preset:'normal', customKm:40, includeHighway:true, stayMin:60, zone:'auto',
   wpOn:true, fuelPrice:1861, origin:null, originIsLive:false,
   band:null, cands:[], ranked:[], picked:null, courseSetId:'—',
   layer:'—', t0:0, firstRenderMs:0, mapLeg:'out', wpResults:[],
@@ -1021,6 +1040,14 @@ async function resolveOrigin(){
     const p = await geocode(typed);
     if (p) { State.originIsLive = false; return { ...Core.snapToGrid(p), label: typed }; }
   }
+  /* 출발 존을 직접 고른 경우엔 위치 권한과 상관없이 그 존을 그대로 쓴다 —
+   * 현재 위치가 그 존을 덮어써 버리면 "이 지역에서 출발하면?" 시뮬레이션이
+   * 안 되기 때문. 기본값(auto)일 때만 현재 위치를 먼저 시도한다. */
+  if (State.zone !== 'auto'){
+    State.originIsLive = false;
+    const a = pickAnchor(State.zone);
+    return { lat:a.lat, lng:a.lng, label: ANCHORS[State.zone].name + ' · ' + a.ref + ' 앵커' };
+  }
   /* 8초 · maximumAge 0 — 실내·와이파이 기반 위치는 2~3초씩 걸리기도 한다.
    * 짧게 잡으면 위치를 못 받은 게 아니라 늦게 받은 것뿐인데도 앵커로 떨어진다. */
   const geo = await new Promise(res => {
@@ -1037,9 +1064,9 @@ async function resolveOrigin(){
     return { ...Core.snapToGrid(geo), label:'현재 위치' };
   }
   State.originIsLive = false;
-  Net.note(geo.reason + ' — 출발 존 앵커를 대신 씁니다 (§1)');
-  const a = ANCHORS[State.zone];
-  return { lat:a.lat, lng:a.lng, label: a.name + ' · ' + a.ref + ' 앵커' };
+  Net.note(geo.reason + ' — 서울 중심부 앵커를 대신 씁니다 (§1)');
+  const a = pickAnchor('Z1');
+  return { lat:a.lat, lng:a.lng, label: ANCHORS.Z1.name + ' · ' + a.ref + ' 앵커' };
 }
 
 async function geocode(q){
