@@ -344,9 +344,13 @@ const CATEGORY_CHAR = [
   { re:/수목원|유원지|성곽|공원|마을|테마/,      char:'시내 혼합'   },
 ];
 
-/* ── §3.1 랭킹 가중치 ── */
-const W = { jam:0.5, hw:0.3, dist:0.2 };
-const W_NO_HW = { jam:0.6, hw:0, dist:0.4 };
+/* ── §3.1 랭킹 가중치 ──
+ * 예전엔 dist 비중이 0.2(고속도로 제외 시 0.4)뿐이라, 정체만 적으면
+ * "선호 거리"와 상관없는 후보가 1위로 올라왔다 (가볍게인데 편도 20km
+ * 넘는 후보가 뽑히거나, 길게인데 보통보다 짧은 후보가 뽑히는 식).
+ * dist 비중을 jam만큼 끌어올려 거리 적합도가 실제로 순위를 좌우하게 한다. */
+const W = { jam:0.35, hw:0.25, dist:0.4 };
+const W_NO_HW = { jam:0.4, hw:0, dist:0.6 };
 const TIE_EPS = 0.02;
 const JAM_FILTER = 0.08;            // §4.2 편도 정체율 < 8%
 const BEARING_PENALTY = 0.95;       // §3.1 방위 쏠림 보정
