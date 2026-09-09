@@ -56,9 +56,16 @@ input[type=range]{accent-color:var(--accent);width:150px}
 
 .mapwrap{position:relative;height:380px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:var(--panel);box-shadow:var(--shadow)}
 #map{position:absolute;inset:0}
-/* TMAP SDK가 라벨을 배경 없는 <span>으로 지도 위에 직접 찍는다. 흰 헤일로를 둘러
- * 도로·위성 등 어떤 타일 색 위에서도 글씨가 묻히지 않게 한다. */
-#map span{color:#111827 !important;font-weight:600 !important;text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 1px #fff !important}
+/* 지도 마커 — TMAP은 iconHTML, Leaflet은 divIcon으로 같은 마크업을 쓴다.
+ * 이름은 항상 띄우면 서로 겹쳐 지도를 가리므로 호버할 때만 보여준다.
+ * 지도 타일은 테마와 무관하게 항상 밝으므로 칩 색은 고정값으로 둔다. */
+.pin{position:relative;width:28px;height:28px;transform:translate(-50%,-50%)}
+.pin-ico{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;background:#fff;border:2px solid #2563eb;font-size:14px;line-height:1;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer}
+.pin-name{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);white-space:nowrap;background:#fff;color:#111827;border:1px solid rgba(0,0,0,.15);border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.28);opacity:0;visibility:hidden;transition:opacity .12s;pointer-events:none}
+.pin:hover{z-index:600}
+.pin:hover .pin-name{opacity:1;visibility:visible}
+.pin-alt{width:18px;height:18px}
+.pin-alt .pin-ico{font-size:10px;border-width:1px;opacity:.85}
 /* SVG는 replaced element라 inset:0만으로는 늘어나지 않고 viewBox의 고유 비율(2:1)로
    높이가 잡혀 컨테이너를 넘친다. width/height를 명시해야 letterbox가 제대로 걸린다. */
 #svgfallback{position:absolute;inset:0;width:100%;height:100%;display:none}
@@ -111,8 +118,6 @@ footer code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:1
 .dbg{display:flex;gap:14px;flex-wrap:wrap}
 .hidden{display:none !important}
 .leaflet-container{font-family:inherit}
-.wp-pin div{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--panel);border:2px solid var(--accent);font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
-.wp-pin-alt div{width:18px;height:18px;font-size:10px;border-width:1px;border-color:var(--muted);opacity:.75}
 .wp-alts{max-height:0;overflow:hidden;transition:max-height .25s ease}
 .wp-alts.open{max-height:300px}
 .wp-alt{padding:5px 0 5px 29px;font-size:12px;color:var(--muted);border-top:1px dashed var(--line)}
@@ -1427,15 +1432,20 @@ function flatten(route){
   return { coords, levels };
 }
 
-/* 경유지 마커 아이콘 — 기본 "A" 핀 대신 이모지 배지를 직접 그려 data URI로 준다.
- * 배경 흰 원 + 색 테두리라 위성/도로 어느 타일 위에서도 잘 보인다. */
-const WP_PIN_COLOR = { food:'#ea580c', cafe:'#78350f' };
-function emojiMarkerIcon(emoji, size, borderColor){
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+size+'" height="'+size+'">'
-    + '<circle cx="'+(size/2)+'" cy="'+(size/2)+'" r="'+(size/2-1.5)+'" fill="#fff" stroke="'+(borderColor||'#2563eb')+'" stroke-width="2"/>'
-    + '<text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" font-size="'+Math.round(size*0.55)+'">'+emoji+'</text>'
-    + '</svg>';
-  return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
+/* 마커 마크업 — TMAP(iconHTML)과 Leaflet(divIcon)이 같은 HTML·CSS를 쓴다.
+ * TMAP 기본 마커는 전부 똑같은 "A" 핀이라 종류를 구분할 수 없고, TMAP의
+ * label 옵션은 이름을 항상 띄워 서로 겹치므로 둘 다 쓰지 않는다.
+ * 이름은 .pin-name이 호버 때만 보여준다. */
+const PIN_COLOR = { food:'#ea580c', cafe:'#78350f', origin:'#2563eb', dest:'#dc2626' };
+function pinHTML(emoji, name, color, alt){
+  return '<div class="pin' + (alt ? ' pin-alt' : '') + '">'
+    + '<div class="pin-ico" style="border-color:' + (color || PIN_COLOR.origin) + '">' + emoji + '</div>'
+    + '<span class="pin-name">' + esc(name) + '</span></div>';
+}
+/* iconAnchor를 0,0으로 두고 .pin의 transform이 가운데 정렬을 맡는다 —
+ * TMAP·Leaflet 양쪽이 같은 CSS 한 벌로 같은 자리에 찍히게 하기 위해서다. */
+function pinIcon(emoji, name, color, alt){
+  return L.divIcon({ className:'', html: pinHTML(emoji, name, color, alt), iconSize:null, iconAnchor:[0,0] });
 }
 
 /* ── 지도: TMAP SDK ─────────────────────────────────────────────────── */
@@ -1481,13 +1491,11 @@ const MapView = {
     const oName = origin.label || origin.name, dName = dest.label || dest.name;
     this.overlays.push(new Tmapv2.Marker({
       position:new Tmapv2.LatLng(origin.lat, origin.lng), map:this.map,
-      icon: emojiMarkerIcon('🚩', 28, '#2563eb'), iconSize:new Tmapv2.Size(28,28),
-      label:'출발' + (oName ? ' · ' + oName : ''),
+      iconHTML: pinHTML('🚩', '출발' + (oName ? ' · ' + oName : ''), PIN_COLOR.origin),
     }));
     this.overlays.push(new Tmapv2.Marker({
       position:new Tmapv2.LatLng(dest.lat, dest.lng), map:this.map,
-      icon: emojiMarkerIcon('🏁', 28, '#dc2626'), iconSize:new Tmapv2.Size(28,28),
-      label:'도착' + (dName ? ' · ' + dName : ''),
+      iconHTML: pinHTML('🏁', '도착' + (dName ? ' · ' + dName : ''), PIN_COLOR.dest),
     }));
     try { this.map.fitBounds(bounds); } catch(e){}
   },
@@ -1497,16 +1505,14 @@ const MapView = {
     if (!this.map) return;
     for (const r of results){
       const c = r.chosen; if (!c) continue;
-      const color = WP_PIN_COLOR[c.kind] || '#2563eb';
       this.wpOverlays.push(new Tmapv2.Marker({
         position:new Tmapv2.LatLng(c.lat, c.lng), map:this.map,
-        icon: emojiMarkerIcon(r.slot.icon, 28, color), iconSize:new Tmapv2.Size(28,28),
-        label:c.name,
+        iconHTML: pinHTML(r.slot.icon, c.name, PIN_COLOR[c.kind]),
       }));
       for (const a of (r.alts||[]).filter(x => x.id !== c.id)){
         this.wpOverlays.push(new Tmapv2.Marker({
           position:new Tmapv2.LatLng(a.lat, a.lng), map:this.map,
-          icon: emojiMarkerIcon(r.slot.icon, 18, WP_PIN_COLOR[a.kind] || '#2563eb'), iconSize:new Tmapv2.Size(18,18),
+          iconHTML: pinHTML(r.slot.icon, a.name, PIN_COLOR[a.kind], true),
         }));
       }
     }
@@ -1560,10 +1566,12 @@ const LeafletView = {
       this.overlays.push(line);
     }
     const oName = origin.label || origin.name, dName = dest.label || dest.name;
-    const mO = L.circleMarker([origin.lat, origin.lng], { radius:8, color:'#fff', fillColor:'#2563eb', fillOpacity:1, weight:2 })
-      .bindTooltip('출발' + (oName ? ' · ' + esc(oName) : ''), { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
-    const mD = L.circleMarker([dest.lat, dest.lng], { radius:8, color:'#fff', fillColor:'#dc2626', fillOpacity:1, weight:2 })
-      .bindTooltip('도착' + (dName ? ' · ' + esc(dName) : ''), { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
+    const mO = L.marker([origin.lat, origin.lng], {
+      icon: pinIcon('🚩', '출발' + (oName ? ' · ' + oName : ''), PIN_COLOR.origin),
+    }).addTo(this.map);
+    const mD = L.marker([dest.lat, dest.lng], {
+      icon: pinIcon('🏁', '도착' + (dName ? ' · ' + dName : ''), PIN_COLOR.dest),
+    }).addTo(this.map);
     this.overlays.push(mO, mD);
     /* 컨테이너 크기를 먼저 확정해야 한다. 크기가 0인 상태로 fitBounds 하면
      * Leaflet이 maxZoom(19)까지 확대해 버려 경로가 화면 밖으로 나간다.
@@ -1580,22 +1588,12 @@ const LeafletView = {
     if (!this.map) return;
     for (const r of results){
       const c = r.chosen; if (!c) continue;
-      const icon = L.divIcon({
-        className:'wp-pin', html:'<div>'+esc(r.slot.icon)+'</div>',
-        iconSize:[26,26], iconAnchor:[13,13],
-      });
-      const m = L.marker([c.lat, c.lng], { icon })
-        .bindTooltip(c.name, { direction:'top', offset:[0,-12] })
+      const m = L.marker([c.lat, c.lng], { icon: pinIcon(r.slot.icon, c.name, PIN_COLOR[c.kind]) })
         .bindPopup(placeLink(c))
         .addTo(this.map);
       this.wpOverlays.push(m);
       for (const a of (r.alts||[]).filter(x => x.id !== c.id)){
-        const altIcon = L.divIcon({
-          className:'wp-pin wp-pin-alt', html:'<div>'+esc(r.slot.icon)+'</div>',
-          iconSize:[18,18], iconAnchor:[9,9],
-        });
-        const am = L.marker([a.lat, a.lng], { icon:altIcon })
-          .bindTooltip(a.name, { direction:'top', offset:[0,-9] })
+        const am = L.marker([a.lat, a.lng], { icon: pinIcon(r.slot.icon, a.name, PIN_COLOR[a.kind], true) })
           .bindPopup(placeLink(a))
           .addTo(this.map);
         this.wpOverlays.push(am);
