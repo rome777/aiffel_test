@@ -108,6 +108,7 @@ footer code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:1
 .dbg{display:flex;gap:14px;flex-wrap:wrap}
 .hidden{display:none !important}
 .leaflet-container{font-family:inherit}
+.wp-pin div{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--panel);border:2px solid var(--accent);font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 .wp-alts{max-height:0;overflow:hidden;transition:max-height .25s ease}
 .wp-alts.open{max-height:300px}
 .wp-alt{padding:5px 0 5px 29px;font-size:12px;color:var(--muted);border-top:1px dashed var(--line)}
@@ -931,7 +932,7 @@ const State = {
   preset:'normal', customKm:40, includeHighway:true, stayMin:60, zone:'Z1',
   wpOn:true, fuelPrice:1861, origin:null, originIsLive:false,
   band:null, cands:[], ranked:[], picked:null, courseSetId:'—',
-  layer:'—', t0:0, firstRenderMs:0, mapLeg:'out',
+  layer:'—', t0:0, firstRenderMs:0, mapLeg:'out', wpResults:[],
 };
 
 /* ── localStorage: 존별 우회계수 · 직전 스냅샷 (§7.1) ── */
@@ -1257,7 +1258,7 @@ async function returnLegAsync(origin, departAt){
 async function waypointsAsync(origin, departAt){
   const p = State.picked;
   const box = $('#wpList');
-  if (!p || !p.routed){ box.innerHTML = '<p class="sub">경로가 확정되지 않아 경유지를 찾을 수 없습니다.</p>'; return; }
+  if (!p || !p.routed){ box.innerHTML = '<p class="sub">경로가 확정되지 않아 경유지를 찾을 수 없습니다.</p>'; State.wpResults = []; clearWaypointMarkers(); return; }
   box.innerHTML = '<p class="sub">경유지 찾는 중…</p>';
 
   const slots = Core.waypointSlots(departAt, p.onewayMin, State.stayMin);
@@ -1288,7 +1289,19 @@ async function waypointsAsync(origin, departAt){
     results.push({ slot, chosen, alts: scored.slice(0,5),
       reason: chosen ? null : (scored.length ? '우회 ' + WP.detourPerSlotMin + '분 초과' : '조건에 맞는 곳 없음') });
   }
+  State.wpResults = results;
   renderWaypoints(results, spent);
+  drawWaypointMarkers();
+}
+
+/* 지도 렌더러(Tmap SDK / Leaflet)에 맞춰 경유지 마커를 그린다. */
+function drawWaypointMarkers(){
+  if (MapView.ready) MapView.drawWaypoints(State.wpResults);
+  else if (LeafletView.ready) LeafletView.drawWaypoints(State.wpResults);
+}
+function clearWaypointMarkers(){
+  if (MapView.ready) MapView.clearWaypoints();
+  if (LeafletView.ready) LeafletView.clearWaypoints();
 }
 
 function pointAtFraction(route, f){
@@ -1348,7 +1361,7 @@ function flatten(route){
 
 /* ── 지도: TMAP SDK ─────────────────────────────────────────────────── */
 const MapView = {
-  map:null, overlays:[], ready:false, failed:false,
+  map:null, overlays:[], wpOverlays:[], ready:false, failed:false,
   async init(){
     if (this.ready || this.failed) return this.ready;
     /* SDK는 브라우저에서 appKey를 직접 요구한다. 프록시 모드에는 키가 없으므로
@@ -1386,9 +1399,21 @@ const MapView = {
         strokeOpacity: 0.95, map: this.map,
       }));
     }
-    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(origin.lat, origin.lng), map:this.map, label:'출발' }));
-    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(dest.lat, dest.lng), map:this.map, label:'도착' }));
+    const oName = origin.label || origin.name, dName = dest.label || dest.name;
+    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(origin.lat, origin.lng), map:this.map, label:'출발' + (oName ? ' · ' + oName : '') }));
+    this.overlays.push(new Tmapv2.Marker({ position:new Tmapv2.LatLng(dest.lat, dest.lng), map:this.map, label:'도착' + (dName ? ' · ' + dName : '') }));
     try { this.map.fitBounds(bounds); } catch(e){}
+  },
+  clearWaypoints(){ this.wpOverlays.forEach(o => { try{ o.setMap(null); }catch(e){} }); this.wpOverlays = []; },
+  drawWaypoints(results){
+    this.clearWaypoints();
+    if (!this.map) return;
+    for (const r of results){
+      const c = r.chosen; if (!c) continue;
+      this.wpOverlays.push(new Tmapv2.Marker({
+        position:new Tmapv2.LatLng(c.lat, c.lng), map:this.map, label:r.slot.icon + ' ' + c.name,
+      }));
+    }
   },
 };
 
@@ -1403,7 +1428,7 @@ const OSM_OPTS = {
 };
 
 const LeafletView = {
-  map:null, overlays:[], ready:false, tileLayer:null, isDark:null,
+  map:null, overlays:[], wpOverlays:[], ready:false, tileLayer:null, isDark:null,
   /* 색을 반전하고 색상환을 180도 돌리면 지형·도로 색조를 유지한 채 어두워진다. */
   applyTheme(isDark){
     const pane = this.map && this.map.getPane('tilePane');
@@ -1452,10 +1477,11 @@ const LeafletView = {
       }).addTo(this.map);
       this.overlays.push(line);
     }
+    const oName = origin.label || origin.name, dName = dest.label || dest.name;
     const mO = L.circleMarker([origin.lat, origin.lng], { radius:8, color:'#fff', fillColor:'#2563eb', fillOpacity:1, weight:2 })
-      .bindTooltip('출발', { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
+      .bindTooltip('출발' + (oName ? ' · ' + esc(oName) : ''), { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
     const mD = L.circleMarker([dest.lat, dest.lng], { radius:8, color:'#fff', fillColor:'#dc2626', fillOpacity:1, weight:2 })
-      .bindTooltip('도착', { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
+      .bindTooltip('도착' + (dName ? ' · ' + esc(dName) : ''), { permanent:true, direction:'top', offset:[0,-10] }).addTo(this.map);
     this.overlays.push(mO, mD);
     /* 컨테이너 크기를 먼저 확정해야 한다. 크기가 0인 상태로 fitBounds 하면
      * Leaflet이 maxZoom(19)까지 확대해 버려 경로가 화면 밖으로 나간다.
@@ -1465,6 +1491,23 @@ const LeafletView = {
     };
     fit();
     setTimeout(fit, 200);
+  },
+  clearWaypoints(){ this.wpOverlays.forEach(o => { try{ o.remove(); }catch(e){} }); this.wpOverlays = []; },
+  drawWaypoints(results){
+    this.clearWaypoints();
+    if (!this.map) return;
+    for (const r of results){
+      const c = r.chosen; if (!c) continue;
+      const icon = L.divIcon({
+        className:'wp-pin', html:'<div>'+esc(r.slot.icon)+'</div>',
+        iconSize:[26,26], iconAnchor:[13,13],
+      });
+      const m = L.marker([c.lat, c.lng], { icon })
+        .bindTooltip(c.name, { direction:'top', offset:[0,-12] })
+        .bindPopup(placeLink(c))
+        .addTo(this.map);
+      this.wpOverlays.push(m);
+    }
   },
 };
 
@@ -1495,8 +1538,9 @@ function drawSvg(route, origin, dest){
   }
   out += '<circle cx="'+X(origin).toFixed(1)+'" cy="'+Y(origin).toFixed(1)+'" r="6" fill="#2563eb" stroke="#fff" stroke-width="2"/>';
   out += '<circle cx="'+X(dest).toFixed(1)+'" cy="'+Y(dest).toFixed(1)+'" r="6" fill="#dc2626" stroke="#fff" stroke-width="2"/>';
-  out += '<text x="'+X(origin).toFixed(1)+'" y="'+(Y(origin)-12).toFixed(1)+'" font-size="11" fill="currentColor" text-anchor="middle">출발</text>';
-  out += '<text x="'+X(dest).toFixed(1)+'" y="'+(Y(dest)-12).toFixed(1)+'" font-size="11" fill="currentColor" text-anchor="middle">도착</text>';
+  const oName = origin.label || origin.name, dName = dest.label || dest.name;
+  out += '<text x="'+X(origin).toFixed(1)+'" y="'+(Y(origin)-12).toFixed(1)+'" font-size="11" fill="currentColor" text-anchor="middle">출발' + (oName ? ' · ' + esc(oName) : '') + '</text>';
+  out += '<text x="'+X(dest).toFixed(1)+'" y="'+(Y(dest)-12).toFixed(1)+'" font-size="11" fill="currentColor" text-anchor="middle">도착' + (dName ? ' · ' + esc(dName) : '') + '</text>';
   svg.innerHTML = out;
 }
 
@@ -1603,6 +1647,7 @@ function renderMap(){
         drawSvg(targetRoute, o, d);
       }
     }
+    drawWaypointMarkers();
   });
 }
 
@@ -1716,6 +1761,7 @@ function wire(){
     e.target.setAttribute('aria-pressed', String(State.wpOn));
     $('#wpCard').classList.toggle('hidden', !State.wpOn);
     if (State.wpOn) waypointsAsync(State.origin, new Date());
+    else { State.wpResults = []; clearWaypointMarkers(); }
   });
   $('#run').addEventListener('click', run);
 
