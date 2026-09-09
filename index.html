@@ -109,6 +109,7 @@ footer code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:1
 .hidden{display:none !important}
 .leaflet-container{font-family:inherit}
 .wp-pin div{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--panel);border:2px solid var(--accent);font-size:14px;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.wp-pin-alt div{width:18px;height:18px;font-size:10px;border-width:1px;border-color:var(--muted);opacity:.75}
 .wp-alts{max-height:0;overflow:hidden;transition:max-height .25s ease}
 .wp-alts.open{max-height:300px}
 .wp-alt{padding:5px 0 5px 29px;font-size:12px;color:var(--muted);border-top:1px dashed var(--line)}
@@ -1413,6 +1414,11 @@ const MapView = {
       this.wpOverlays.push(new Tmapv2.Marker({
         position:new Tmapv2.LatLng(c.lat, c.lng), map:this.map, label:r.slot.icon + ' ' + c.name,
       }));
+      for (const a of (r.alts||[]).filter(x => x.id !== c.id)){
+        this.wpOverlays.push(new Tmapv2.Marker({
+          position:new Tmapv2.LatLng(a.lat, a.lng), map:this.map, label:r.slot.icon,
+        }));
+      }
     }
   },
 };
@@ -1507,6 +1513,17 @@ const LeafletView = {
         .bindPopup(placeLink(c))
         .addTo(this.map);
       this.wpOverlays.push(m);
+      for (const a of (r.alts||[]).filter(x => x.id !== c.id)){
+        const altIcon = L.divIcon({
+          className:'wp-pin wp-pin-alt', html:'<div>'+esc(r.slot.icon)+'</div>',
+          iconSize:[18,18], iconAnchor:[9,9],
+        });
+        const am = L.marker([a.lat, a.lng], { icon:altIcon })
+          .bindTooltip(a.name, { direction:'top', offset:[0,-9] })
+          .bindPopup(placeLink(a))
+          .addTo(this.map);
+        this.wpOverlays.push(am);
+      }
     }
   },
 };
