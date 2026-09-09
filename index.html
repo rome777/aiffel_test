@@ -378,6 +378,7 @@ const FUEL_ADJ = { highway:1.00, city:0.85, jam:0.55 };
 const WP = {
   bufferKm:2, detourPerSlotMin:10, detourTotalMin:25,
   jamRiseMax:0.02, retries:3, minReviews:15, minRating:4.0, maxSlots:4,
+  minFromOriginKm:5,   // 출발지 근처는 "경유"가 아니라 그냥 집 앞이라 추천에서 뺀다
 };
 const VIEW_KEYWORDS = /뷰|테라스|루프탑|창가|노을|전망|오션|리버/;
 
@@ -1282,6 +1283,7 @@ async function waypointsAsync(origin, departAt){
     const center = pointAtFraction(p.route, Math.min(1, Math.max(0, frac)));
     const pool = await Provider.waypoints(center, slot.kind);
     const scored = pool
+      .filter(x => Core.haversine(origin, x) >= WP.minFromOriginKm)   // 출발지 코앞 추천 금지
       .filter(x => x.rating == null || x.rating >= WP.minRating)
       .filter(x => x.reviews == null || x.reviews >= WP.minReviews)
       .map(x => {
