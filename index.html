@@ -412,6 +412,7 @@ const WP = {
   jamRiseMax:0.02, retries:3, minReviews:15, minRating:4.0, maxSlots:4,
   minFromOriginKm:5,   // 출발지 근처는 "경유"가 아니라 그냥 집 앞이라 추천에서 뺀다
   minApartKm:5,        // 슬롯끼리 이만큼은 떨어뜨린다 — 한 동네에 몰아 추천하지 않게
+  minAltApartKm:0.5,   // 같은 슬롯의 대안끼리 최소 간격 (검색 반경 2 km 안에서)
 };
 const VIEW_KEYWORDS = /뷰|테라스|루프탑|창가|노을|전망|오션|리버/;
 
@@ -987,6 +988,7 @@ const State = {
   wpOn:true, fuelPrice:1861, origin:null, originIsLive:false,
   band:null, cands:[], ranked:[], picked:null, courseSetId:'—',
   layer:'—', t0:0, firstRenderMs:0, mapLeg:'out', wpResults:[],
+  wpOpen: new Set(),   // 대안 목록을 펼친 슬롯 — 지도에도 그때만 대안을 찍는다
 };
 
 /* ── localStorage: 존별 우회계수 · 직전 스냅샷 (§7.1) ── */
@@ -1331,6 +1333,7 @@ async function waypointsAsync(origin, departAt){
   if (!p || !p.routed){ box.innerHTML = '<p class="sub">경로가 확정되지 않아 경유지를 찾을 수 없습니다.</p>'; State.wpResults = []; clearWaypointMarkers(); return; }
   box.innerHTML = '<p class="sub">경유지 찾는 중…</p>';
 
+  State.wpOpen.clear();          // 새 탐색이면 펼쳐둔 대안 목록도 닫힌 상태로 시작
   const slots = Core.waypointSlots(departAt, p.onewayMin, State.stayMin);
   if (!slots.length){ box.innerHTML = '<p class="sub">이 시간대에는 해당하는 식사·카페 슬롯이 없습니다. (§6.1)</p>'; return; }
 
@@ -1376,7 +1379,20 @@ async function waypointsAsync(origin, departAt){
       if (spent + cand.detourMin > WP.detourTotalMin) continue;
       chosen = cand; spent += cand.detourMin; break;
     }
-    results.push({ slot, chosen, alts: scored.slice(0,5),
+
+    /* 대안도 점수 상위 4개를 그냥 자르면 전부 추천지 20~80 m 안(심하면 같은
+     * 건물)에 몰린다 — Kakao가 sort=distance로 가까운 순을 주고 점수도 우회가
+     * 짧을수록 높아서다. 서로 minAltApartKm 이상 떨어진 것만 골라 지도에서도
+     * 목록에서도 "다른 선택지"가 되게 한다. */
+    const alts = [];
+    for (const cand of scored){
+      if (alts.length >= 4) break;
+      if (chosen && cand.id === chosen.id) continue;
+      const placed = chosen ? [chosen, ...alts] : alts;
+      if (placed.some(q => Core.haversine(q, cand) < WP.minAltApartKm)) continue;
+      alts.push(cand);
+    }
+    results.push({ slot, chosen, alts,
       reason: chosen ? null : (scored.length ? '우회 ' + WP.detourPerSlotMin + '분 초과' : '조건에 맞는 곳 없음') });
   }
   State.wpResults = results;
@@ -1384,10 +1400,22 @@ async function waypointsAsync(origin, departAt){
   drawWaypointMarkers();
 }
 
-/* 지도 렌더러(Tmap SDK / Leaflet)에 맞춰 경유지 마커를 그린다. */
+/* 지도 렌더러(Tmap SDK / Leaflet)에 맞춰 경유지 마커를 그린다.
+ * 대안은 목록을 펼친 슬롯만 찍는다 — 전체 경로가 보이는 줌에서는 수백 m
+ * 차이가 몇 px이라, 대안을 항상 띄우면 추천 핀과 한 덩어리로 뭉쳐 보인다. */
 function drawWaypointMarkers(){
-  if (MapView.ready) MapView.drawWaypoints(State.wpResults);
-  else if (LeafletView.ready) LeafletView.drawWaypoints(State.wpResults);
+  const shown = State.wpResults.map(r =>
+    State.wpOpen.has(r.slot.key) ? r : { ...r, alts: [] });
+  if (MapView.ready) MapView.drawWaypoints(shown);
+  else if (LeafletView.ready) LeafletView.drawWaypoints(shown);
+}
+
+function toggleAlts(slotKey, boxId){
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  if (box.classList.toggle('open')) State.wpOpen.add(slotKey);
+  else State.wpOpen.delete(slotKey);
+  drawWaypointMarkers();
 }
 function clearWaypointMarkers(){
   if (MapView.ready) MapView.clearWaypoints();
@@ -1791,7 +1819,7 @@ function renderWaypoints(results, spent){
       + (c.rating? ' · 평점 '+c.rating.toFixed(1):'') + (c.hoursKnown===false?' · 영업 여부 미확인':'') + esc(view)
       + '</div>';
     if (alts.length){
-      html += '<button class="wp-toggle-alt" onclick="document.getElementById(\''+altId+'\').classList.toggle(\'open\')"> · 대안 '+alts.length+'곳 보기 ▾</button>';
+      html += '<button class="wp-toggle-alt" onclick="toggleAlts(\''+s.key+'\',\''+altId+'\')"> · 대안 '+alts.length+'곳 보기 ▾</button>';
       html += '<div class="wp-alts" id="'+altId+'">';
       for (const a of alts){
         const av = (a.kind==='cafe' && VIEW_KEYWORDS.test(a.reviewText||'')) ? ' · 조망' : '';
